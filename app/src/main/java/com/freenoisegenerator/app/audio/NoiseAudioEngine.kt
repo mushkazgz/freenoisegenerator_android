@@ -3,8 +3,10 @@ package com.freenoisegenerator.app.audio
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
+import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.max
-import kotlin.math.min
+import kotlin.math.sin
 import kotlin.random.Random
 
 class NoiseAudioEngine {
@@ -12,28 +14,37 @@ class NoiseAudioEngine {
     private var running = false
 
     @Volatile
-    private var kind = NoiseKind.WHITE
+    private var targetVolume = 0.55f
 
     @Volatile
-    private var targetVolume = 0.55f
+    private var bassLevel = DEFAULT_BASS_LEVEL
+
+    @Volatile
+    private var lowMidsLevel = DEFAULT_LOW_MIDS_LEVEL
 
     private var audioThread: Thread? = null
 
-    fun start(initialKind: NoiseKind, initialVolume: Float) {
-        kind = initialKind
+    fun start(
+        initialVolume: Float,
+        initialBassLevel: Float = DEFAULT_BASS_LEVEL,
+        initialLowMidsLevel: Float = DEFAULT_LOW_MIDS_LEVEL
+    ) {
         targetVolume = initialVolume.coerceIn(0f, 1f)
+        bassLevel = initialBassLevel.coerceIn(0f, MAX_BAND_LEVEL)
+        lowMidsLevel = initialLowMidsLevel.coerceIn(0f, MAX_LOW_MIDS_LEVEL)
         if (running) return
 
         running = true
         audioThread = Thread(::audioLoop, "NoiseAudioEngine").also { it.start() }
     }
 
-    fun setKind(nextKind: NoiseKind) {
-        kind = nextKind
-    }
-
     fun setVolume(nextVolume: Float) {
         targetVolume = nextVolume.coerceIn(0f, 1f)
+    }
+
+    fun setBandLevels(nextBassLevel: Float, nextLowMidsLevel: Float) {
+        bassLevel = nextBassLevel.coerceIn(0f, MAX_BAND_LEVEL)
+        lowMidsLevel = nextLowMidsLevel.coerceIn(0f, MAX_LOW_MIDS_LEVEL)
     }
 
     fun stop() {
@@ -78,7 +89,7 @@ class NoiseAudioEngine {
             while (running && !Thread.currentThread().isInterrupted) {
                 for (index in buffer.indices) {
                     currentVolume += (targetVolume - currentVolume) * VOLUME_SMOOTHING
-                    val sample = generator.next(kind) * currentVolume * OUTPUT_GAIN
+                    val sample = generator.next(bassLevel, lowMidsLevel) * currentVolume * OUTPUT_GAIN
                     buffer[index] = (sample.coerceIn(-1f, 1f) * Short.MAX_VALUE).toInt().toShort()
                 }
                 track.write(buffer, 0, buffer.size)
@@ -94,43 +105,126 @@ class NoiseAudioEngine {
 
     private class NoiseGenerator {
         private val random = Random(System.nanoTime())
-        private var pinkB0 = 0.0
-        private var pinkB1 = 0.0
-        private var pinkB2 = 0.0
-        private var pinkB3 = 0.0
-        private var pinkB4 = 0.0
-        private var pinkB5 = 0.0
-        private var pinkB6 = 0.0
-        private var brown = 0.0
+        private val brownProfile = BrownBandProfile()
 
-        fun next(kind: NoiseKind): Float =
-            when (kind) {
-                NoiseKind.WHITE -> white()
-                NoiseKind.PINK -> pink()
-                NoiseKind.BROWN -> brown()
-            }
-
-        private fun white(): Float =
-            random.nextFloat() * 2f - 1f
-
-        private fun pink(): Float {
-            val white = white().toDouble()
-            pinkB0 = 0.99886 * pinkB0 + white * 0.0555179
-            pinkB1 = 0.99332 * pinkB1 + white * 0.0750759
-            pinkB2 = 0.96900 * pinkB2 + white * 0.1538520
-            pinkB3 = 0.86650 * pinkB3 + white * 0.3104856
-            pinkB4 = 0.55000 * pinkB4 + white * 0.5329522
-            pinkB5 = -0.7616 * pinkB5 - white * 0.0168980
-            val output = pinkB0 + pinkB1 + pinkB2 + pinkB3 + pinkB4 + pinkB5 + pinkB6 + white * 0.5362
-            pinkB6 = white * 0.115926
-            return (output * 0.11).toFloat()
+        fun next(bassLevel: Float, lowMidsLevel: Float): Float {
+            val white = random.nextFloat() * 2.0 - 1.0
+            return brownProfile.next(white, bassLevel, lowMidsLevel).toFloat()
         }
 
-        private fun brown(): Float {
-            val white = white().toDouble()
-            brown = (brown + 0.02 * white) / 1.02
-            brown = min(1.0, max(-1.0, brown))
-            return (brown * 3.5).toFloat()
+        private class BrownBandProfile {
+            private val bass = FilterBand(
+                minFrequency = 32.0,
+                centerFrequency = 125.0,
+                maxFrequency = 500.0,
+                q = 0.7
+            )
+            private val lowMids = FilterBand(
+                minFrequency = 500.0,
+                centerFrequency = 1000.0,
+                maxFrequency = 2000.0,
+                q = 0.7
+            )
+
+            fun next(input: Double, bassLevel: Float, lowMidsLevel: Float): Double {
+                val bassGain = bassLevel.toDouble() / MAX_BAND_LEVEL
+                val lowMidsGain = lowMidsLevel.toDouble() / MAX_BAND_LEVEL
+                return (bass.next(input) * bassGain + lowMids.next(input) * lowMidsGain) *
+                    BROWN_PROFILE_GAIN
+            }
+        }
+
+        private class FilterBand(
+            minFrequency: Double,
+            centerFrequency: Double,
+            maxFrequency: Double,
+            q: Double
+        ) {
+            private val lowCut = Biquad.highPass(minFrequency, 1.0)
+            private val bandPass = Biquad.bandPass(centerFrequency, q)
+            private val highCut = Biquad.lowPass(maxFrequency, 1.0)
+
+            fun next(input: Double): Double =
+                highCut.process(bandPass.process(lowCut.process(input)))
+        }
+
+        private class Biquad(
+            private val b0: Double,
+            private val b1: Double,
+            private val b2: Double,
+            private val a1: Double,
+            private val a2: Double
+        ) {
+            private var x1 = 0.0
+            private var x2 = 0.0
+            private var y1 = 0.0
+            private var y2 = 0.0
+
+            fun process(input: Double): Double {
+                val output = b0 * input + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2
+                x2 = x1
+                x1 = input
+                y2 = y1
+                y1 = output
+                return output
+            }
+
+            companion object {
+                fun lowPass(frequency: Double, q: Double): Biquad {
+                    val omega = 2.0 * PI * frequency / SAMPLE_RATE
+                    val alpha = sin(omega) / (2.0 * q)
+                    val cosOmega = cos(omega)
+                    val b0 = (1.0 - cosOmega) / 2.0
+                    val b1 = 1.0 - cosOmega
+                    val b2 = (1.0 - cosOmega) / 2.0
+                    val a0 = 1.0 + alpha
+                    val a1 = -2.0 * cosOmega
+                    val a2 = 1.0 - alpha
+                    return normalized(b0, b1, b2, a0, a1, a2)
+                }
+
+                fun highPass(frequency: Double, q: Double): Biquad {
+                    val omega = 2.0 * PI * frequency / SAMPLE_RATE
+                    val alpha = sin(omega) / (2.0 * q)
+                    val cosOmega = cos(omega)
+                    val b0 = (1.0 + cosOmega) / 2.0
+                    val b1 = -(1.0 + cosOmega)
+                    val b2 = (1.0 + cosOmega) / 2.0
+                    val a0 = 1.0 + alpha
+                    val a1 = -2.0 * cosOmega
+                    val a2 = 1.0 - alpha
+                    return normalized(b0, b1, b2, a0, a1, a2)
+                }
+
+                fun bandPass(frequency: Double, q: Double): Biquad {
+                    val omega = 2.0 * PI * frequency / SAMPLE_RATE
+                    val alpha = sin(omega) / (2.0 * q)
+                    val cosOmega = cos(omega)
+                    val b0 = alpha
+                    val b1 = 0.0
+                    val b2 = -alpha
+                    val a0 = 1.0 + alpha
+                    val a1 = -2.0 * cosOmega
+                    val a2 = 1.0 - alpha
+                    return normalized(b0, b1, b2, a0, a1, a2)
+                }
+
+                private fun normalized(
+                    b0: Double,
+                    b1: Double,
+                    b2: Double,
+                    a0: Double,
+                    a1: Double,
+                    a2: Double
+                ): Biquad =
+                    Biquad(
+                        b0 = b0 / a0,
+                        b1 = b1 / a0,
+                        b2 = b2 / a0,
+                        a1 = a1 / a0,
+                        a2 = a2 / a0
+                    )
+            }
         }
     }
 
@@ -138,5 +232,10 @@ class NoiseAudioEngine {
         const val SAMPLE_RATE = 44_100
         const val VOLUME_SMOOTHING = 0.0007f
         const val OUTPUT_GAIN = 1.5f
+        const val BROWN_PROFILE_GAIN = 2.8
+        const val MAX_BAND_LEVEL = 0.5f
+        const val MAX_LOW_MIDS_LEVEL = 0.1f
+        const val DEFAULT_BASS_LEVEL = 0.5f
+        const val DEFAULT_LOW_MIDS_LEVEL = 0.1f
     }
 }

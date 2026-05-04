@@ -15,13 +15,11 @@ import androidx.core.app.NotificationCompat
 import com.freenoisegenerator.app.MainActivity
 import com.freenoisegenerator.app.R
 import com.freenoisegenerator.app.audio.NoiseAudioEngine
-import com.freenoisegenerator.app.audio.NoiseKind
 
 class NoiseService : Service() {
     private val engine = NoiseAudioEngine()
     private val handler = Handler(Looper.getMainLooper())
-    private var currentKind = NoiseKind.WHITE
-    private var timerRunnable: Runnable? = null
+    private var stopRunnable: Runnable? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -38,31 +36,37 @@ class NoiseService : Service() {
     }
 
     override fun onDestroy() {
-        stopTimer()
+        cancelTimer()
         engine.stop()
-        broadcastPlaying(false)
+        broadcastState(isPlaying = false, timerEndsAtMillis = 0L)
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun play(intent: Intent) {
-        currentKind = NoiseKind.fromName(intent.getStringExtra(EXTRA_KIND))
         val volume = intent.getFloatExtra(EXTRA_VOLUME, DEFAULT_VOLUME)
-        val durationMillis = intent.getLongExtra(EXTRA_DURATION_MILLIS, 0L)
+        val bassLevel = intent.getFloatExtra(EXTRA_BASS_LEVEL, DEFAULT_BASS_LEVEL)
+        val lowMidsLevel = intent.getFloatExtra(EXTRA_LOW_MIDS_LEVEL, DEFAULT_LOW_MIDS_LEVEL)
+        val timerMillis = intent.getLongExtra(EXTRA_TIMER_MILLIS, 0L)
+        val timerEndsAtMillis = if (timerMillis > 0L) {
+            System.currentTimeMillis() + timerMillis
+        } else {
+            0L
+        }
 
         startForeground(NOTIFICATION_ID, notification(isPlaying = true))
-        engine.start(currentKind, volume)
-        engine.setKind(currentKind)
+        engine.start(volume, bassLevel, lowMidsLevel)
         engine.setVolume(volume)
-        scheduleTimer(durationMillis)
-        broadcastPlaying(true)
+        engine.setBandLevels(bassLevel, lowMidsLevel)
+        scheduleTimer(timerMillis)
+        broadcastState(isPlaying = true, timerEndsAtMillis = timerEndsAtMillis)
     }
 
     private fun stopPlayback() {
-        stopTimer()
+        cancelTimer()
         engine.stop()
-        broadcastPlaying(false)
+        broadcastState(isPlaying = false, timerEndsAtMillis = 0L)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             stopForeground(STOP_FOREGROUND_REMOVE)
         } else {
@@ -72,18 +76,18 @@ class NoiseService : Service() {
         stopSelf()
     }
 
-    private fun scheduleTimer(durationMillis: Long) {
-        stopTimer()
-        if (durationMillis <= 0L) return
+    private fun scheduleTimer(timerMillis: Long) {
+        cancelTimer()
+        if (timerMillis <= 0L) return
 
-        timerRunnable = Runnable { stopPlayback() }.also {
-            handler.postDelayed(it, durationMillis)
+        stopRunnable = Runnable { stopPlayback() }.also {
+            handler.postDelayed(it, timerMillis)
         }
     }
 
-    private fun stopTimer() {
-        timerRunnable?.let(handler::removeCallbacks)
-        timerRunnable = null
+    private fun cancelTimer() {
+        stopRunnable?.let(handler::removeCallbacks)
+        stopRunnable = null
     }
 
     private fun notification(isPlaying: Boolean): Notification {
@@ -109,13 +113,17 @@ class NoiseService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_noise)
             .setContentTitle(getString(R.string.app_name))
-            .setContentText("${currentKind.label} en reproduccion")
+            .setContentText("Brown noise playing")
             .setContentIntent(contentIntent)
             .setOngoing(isPlaying)
             .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
-            .addAction(0, "Pausar", pauseIntent)
-            .addAction(0, "Parar", stopIntent)
+            .setStyle(
+                androidx.media.app.NotificationCompat.MediaStyle()
+                    .setShowActionsInCompactView(0, 1)
+            )
+            .addAction(R.drawable.ic_notification_pause, "Pause", pauseIntent)
+            .addAction(R.drawable.ic_notification_stop, "Stop", stopIntent)
             .build()
     }
 
@@ -124,17 +132,18 @@ class NoiseService : Service() {
 
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Reproduccion de ruido",
+            "Noise playback",
             NotificationManager.IMPORTANCE_LOW
         )
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(channel)
     }
 
-    private fun broadcastPlaying(isPlaying: Boolean) {
+    private fun broadcastState(isPlaying: Boolean, timerEndsAtMillis: Long) {
         val intent = Intent(ACTION_STATE_CHANGED)
             .setPackage(packageName)
             .putExtra(EXTRA_IS_PLAYING, isPlaying)
+            .putExtra(EXTRA_TIMER_ENDS_AT_MILLIS, timerEndsAtMillis)
         sendBroadcast(intent)
     }
 
@@ -143,21 +152,33 @@ class NoiseService : Service() {
         const val ACTION_PAUSE = "com.freenoisegenerator.app.action.PAUSE"
         const val ACTION_STOP = "com.freenoisegenerator.app.action.STOP"
         const val ACTION_STATE_CHANGED = "com.freenoisegenerator.app.action.STATE_CHANGED"
-        const val EXTRA_KIND = "extra_kind"
         const val EXTRA_VOLUME = "extra_volume"
-        const val EXTRA_DURATION_MILLIS = "extra_duration_millis"
+        const val EXTRA_BASS_LEVEL = "extra_bass_level"
+        const val EXTRA_LOW_MIDS_LEVEL = "extra_low_mids_level"
+        const val EXTRA_TIMER_MILLIS = "extra_timer_millis"
         const val EXTRA_IS_PLAYING = "extra_is_playing"
+        const val EXTRA_TIMER_ENDS_AT_MILLIS = "extra_timer_ends_at_millis"
 
         private const val CHANNEL_ID = "noise_playback"
         private const val NOTIFICATION_ID = 1001
         private const val DEFAULT_VOLUME = 0.55f
+        private const val DEFAULT_BASS_LEVEL = 0.5f
+        private const val DEFAULT_LOW_MIDS_LEVEL = 0.1f
+        private const val MAX_LOW_MIDS_LEVEL = 0.1f
 
-        fun playIntent(context: Context, kind: NoiseKind, volume: Float, durationMillis: Long): Intent =
+        fun playIntent(
+            context: Context,
+            volume: Float,
+            bassLevel: Float = DEFAULT_BASS_LEVEL,
+            lowMidsLevel: Float = DEFAULT_LOW_MIDS_LEVEL,
+            timerMillis: Long = 0L
+        ): Intent =
             Intent(context, NoiseService::class.java)
                 .setAction(ACTION_PLAY)
-                .putExtra(EXTRA_KIND, kind.name)
                 .putExtra(EXTRA_VOLUME, volume)
-                .putExtra(EXTRA_DURATION_MILLIS, durationMillis)
+                .putExtra(EXTRA_BASS_LEVEL, bassLevel)
+                .putExtra(EXTRA_LOW_MIDS_LEVEL, lowMidsLevel.coerceIn(0f, MAX_LOW_MIDS_LEVEL))
+                .putExtra(EXTRA_TIMER_MILLIS, timerMillis)
 
         fun stopIntent(context: Context): Intent =
             Intent(context, NoiseService::class.java).setAction(ACTION_STOP)
