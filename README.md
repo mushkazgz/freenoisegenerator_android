@@ -21,6 +21,7 @@ Native Android app for playing deep brown ambient noise.
 - Screensaver includes a warm ember/fire glow, stars, constellations, a soft milky-way wash and an occasional shooting star.
 - Settings dialog with a persistent on/off control for the screensaver.
 - About dialog with Noisyogui credit and a PayPal donation link.
+- Portrait-only screen to keep the interface fixed and avoid accidental layout movement.
 
 ## Audio Model
 
