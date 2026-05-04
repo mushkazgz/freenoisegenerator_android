@@ -5,7 +5,6 @@ import android.media.AudioFormat
 import android.media.AudioTrack
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.sqrt
 import kotlin.random.Random
 
 class NoiseAudioEngine {
@@ -18,15 +17,11 @@ class NoiseAudioEngine {
     @Volatile
     private var targetVolume = 0.55f
 
-    @Volatile
-    private var tone = DEFAULT_TONE
-
     private var audioThread: Thread? = null
 
-    fun start(initialKind: NoiseKind, initialVolume: Float, initialTone: Float = DEFAULT_TONE) {
+    fun start(initialKind: NoiseKind, initialVolume: Float) {
         kind = initialKind
         targetVolume = initialVolume.coerceIn(0f, 1f)
-        tone = initialTone.coerceIn(0f, 1f)
         if (running) return
 
         running = true
@@ -39,10 +34,6 @@ class NoiseAudioEngine {
 
     fun setVolume(nextVolume: Float) {
         targetVolume = nextVolume.coerceIn(0f, 1f)
-    }
-
-    fun setTone(nextTone: Float) {
-        tone = nextTone.coerceIn(0f, 1f)
     }
 
     fun stop() {
@@ -87,7 +78,7 @@ class NoiseAudioEngine {
             while (running && !Thread.currentThread().isInterrupted) {
                 for (index in buffer.indices) {
                     currentVolume += (targetVolume - currentVolume) * VOLUME_SMOOTHING
-                    val sample = generator.next(kind, tone) * currentVolume * OUTPUT_GAIN
+                    val sample = generator.next(kind) * currentVolume * OUTPUT_GAIN
                     buffer[index] = (sample.coerceIn(-1f, 1f) * Short.MAX_VALUE).toInt().toShort()
                 }
                 track.write(buffer, 0, buffer.size)
@@ -110,15 +101,13 @@ class NoiseAudioEngine {
         private var pinkB4 = 0.0
         private var pinkB5 = 0.0
         private var pinkB6 = 0.0
-        private var deepBrown = 0.0
-        private var clearBrown = 0.0
-        private var brownPower = TARGET_BROWN_RMS * TARGET_BROWN_RMS
+        private var brown = 0.0
 
-        fun next(kind: NoiseKind, tone: Float): Float =
+        fun next(kind: NoiseKind): Float =
             when (kind) {
                 NoiseKind.WHITE -> white()
                 NoiseKind.PINK -> pink()
-                NoiseKind.BROWN -> brown(tone)
+                NoiseKind.BROWN -> brown()
             }
 
         private fun white(): Float =
@@ -137,18 +126,11 @@ class NoiseAudioEngine {
             return (output * 0.11).toFloat()
         }
 
-        private fun brown(tone: Float): Float {
+        private fun brown(): Float {
             val white = white().toDouble()
-            deepBrown = (deepBrown + DEEP_BROWN_STEP * white) / (1.0 + DEEP_BROWN_STEP)
-            clearBrown = (clearBrown + CLEAR_BROWN_STEP * white) / (1.0 + CLEAR_BROWN_STEP)
-            deepBrown = min(1.0, max(-1.0, deepBrown))
-            clearBrown = min(1.0, max(-1.0, clearBrown))
-
-            val shaped = deepBrown * (1.0 - tone) + clearBrown * tone
-            brownPower += (shaped * shaped - brownPower) * BROWN_POWER_SMOOTHING
-
-            val gain = TARGET_BROWN_RMS / sqrt(brownPower + 0.000001)
-            return (shaped * gain).coerceIn(-1.0, 1.0).toFloat()
+            brown = (brown + 0.02 * white) / 1.02
+            brown = min(1.0, max(-1.0, brown))
+            return (brown * 3.5).toFloat()
         }
     }
 
@@ -156,10 +138,5 @@ class NoiseAudioEngine {
         const val SAMPLE_RATE = 44_100
         const val VOLUME_SMOOTHING = 0.0007f
         const val OUTPUT_GAIN = 1.5f
-        const val DEFAULT_TONE = 0.18f
-        const val DEEP_BROWN_STEP = 0.006
-        const val CLEAR_BROWN_STEP = 0.055
-        const val TARGET_BROWN_RMS = 0.24
-        const val BROWN_POWER_SMOOTHING = 0.0008
     }
 }

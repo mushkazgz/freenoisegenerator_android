@@ -89,9 +89,6 @@ private fun NoiseApp() {
     var volume by remember {
         mutableStateOf(preferences.getFloat(KEY_VOLUME, DEFAULT_VOLUME))
     }
-    var tone by remember {
-        mutableStateOf(preferences.getFloat(KEY_TONE, DEFAULT_TONE))
-    }
 
     DisposableEffect(context) {
         val receiver = object : BroadcastReceiver() {
@@ -116,14 +113,9 @@ private fun NoiseApp() {
         preferences.edit().putFloat(KEY_VOLUME, volume).apply()
     }
 
-    fun saveTone() {
-        preferences.edit().putFloat(KEY_TONE, tone).apply()
-    }
-
     fun play() {
         saveVolume()
-        saveTone()
-        context.startNoisePlayback(volume, tone)
+        context.startNoisePlayback(volume)
         isPlaying = true
     }
 
@@ -234,7 +226,7 @@ private fun NoiseApp() {
                             onValueChange = { volume = it },
                             onValueChangeFinished = {
                                 saveVolume()
-                                if (isPlaying) context.startNoisePlayback(volume, tone)
+                                if (isPlaying) context.startNoisePlayback(volume)
                             },
                             colors = SliderDefaults.colors(
                                 thumbColor = AppColors.Accent,
@@ -253,56 +245,6 @@ private fun NoiseApp() {
                             modifier = Modifier.size(22.dp)
                         )
                     }
-                    Spacer(Modifier.height(4.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Tone",
-                            color = AppColors.TextPrimary,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Medium,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Text(
-                            text = if (tone < 0.38f) "Deep" else "Clear",
-                            color = AppColors.TextMuted,
-                            style = MaterialTheme.typography.labelLarge
-                        )
-                    }
-                    Slider(
-                        value = tone,
-                        onValueChange = { tone = it },
-                        onValueChangeFinished = {
-                            saveTone()
-                            if (isPlaying) context.startNoisePlayback(volume, tone)
-                        },
-                        colors = SliderDefaults.colors(
-                            thumbColor = AppColors.ToneAccent,
-                            activeTrackColor = AppColors.ToneAccent,
-                            inactiveTrackColor = AppColors.Track,
-                            activeTickColor = Color.Transparent,
-                            inactiveTickColor = Color.Transparent
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Deep brown",
-                            color = AppColors.TextSubtle,
-                            style = MaterialTheme.typography.labelMedium,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Text(
-                            text = "Lighter",
-                            color = AppColors.TextSubtle,
-                            style = MaterialTheme.typography.labelMedium
-                        )
-                    }
                 }
             }
         }
@@ -319,20 +261,17 @@ private object AppColors {
     val ButtonBorder = Color(0xFF47665D)
     val ButtonBorderActive = Color(0xFF7FCFB6)
     val Accent = Color(0xFFD9B86F)
-    val ToneAccent = Color(0xFF8AC7FF)
     val Track = Color(0xFF283A36)
     val TextPrimary = Color(0xFFF1F7F4)
     val TextMuted = Color(0xFF9BAEA7)
-    val TextSubtle = Color(0xFF6F817C)
 }
 
-private fun Context.startNoisePlayback(volume: Float, tone: Float) {
+private fun Context.startNoisePlayback(volume: Float) {
     val intent = NoiseService.playIntent(
         context = this,
         kind = NoiseKind.BROWN,
         volume = volume.coerceIn(0f, 1f),
-        durationMillis = 0L,
-        tone = tone.coerceIn(0f, 1f)
+        durationMillis = 0L
     )
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
         startForegroundService(intent)
@@ -346,6 +285,4 @@ private fun Context.stopNoisePlayback() {
 }
 
 private const val KEY_VOLUME = "volume"
-private const val KEY_TONE = "tone"
 private const val DEFAULT_VOLUME = 0.85f
-private const val DEFAULT_TONE = 0.18f

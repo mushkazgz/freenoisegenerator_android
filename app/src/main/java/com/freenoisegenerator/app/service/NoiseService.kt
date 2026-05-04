@@ -49,14 +49,12 @@ class NoiseService : Service() {
     private fun play(intent: Intent) {
         currentKind = NoiseKind.fromName(intent.getStringExtra(EXTRA_KIND))
         val volume = intent.getFloatExtra(EXTRA_VOLUME, DEFAULT_VOLUME)
-        val tone = intent.getFloatExtra(EXTRA_TONE, DEFAULT_TONE)
         val durationMillis = intent.getLongExtra(EXTRA_DURATION_MILLIS, 0L)
 
         startForeground(NOTIFICATION_ID, notification(isPlaying = true))
-        engine.start(currentKind, volume, tone)
+        engine.start(currentKind, volume)
         engine.setKind(currentKind)
         engine.setVolume(volume)
-        engine.setTone(tone)
         scheduleTimer(durationMillis)
         broadcastPlaying(true)
     }
@@ -147,27 +145,18 @@ class NoiseService : Service() {
         const val ACTION_STATE_CHANGED = "com.freenoisegenerator.app.action.STATE_CHANGED"
         const val EXTRA_KIND = "extra_kind"
         const val EXTRA_VOLUME = "extra_volume"
-        const val EXTRA_TONE = "extra_tone"
         const val EXTRA_DURATION_MILLIS = "extra_duration_millis"
         const val EXTRA_IS_PLAYING = "extra_is_playing"
 
         private const val CHANNEL_ID = "noise_playback"
         private const val NOTIFICATION_ID = 1001
         private const val DEFAULT_VOLUME = 0.55f
-        private const val DEFAULT_TONE = 0.18f
 
-        fun playIntent(
-            context: Context,
-            kind: NoiseKind,
-            volume: Float,
-            durationMillis: Long,
-            tone: Float = DEFAULT_TONE
-        ): Intent =
+        fun playIntent(context: Context, kind: NoiseKind, volume: Float, durationMillis: Long): Intent =
             Intent(context, NoiseService::class.java)
                 .setAction(ACTION_PLAY)
                 .putExtra(EXTRA_KIND, kind.name)
                 .putExtra(EXTRA_VOLUME, volume)
-                .putExtra(EXTRA_TONE, tone)
                 .putExtra(EXTRA_DURATION_MILLIS, durationMillis)
 
         fun stopIntent(context: Context): Intent =
