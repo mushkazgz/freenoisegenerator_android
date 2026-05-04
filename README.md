@@ -16,7 +16,11 @@ Native Android app for playing deep brown ambient noise.
 - Playback stops automatically when the countdown reaches zero.
 - Persistent media notification with compact pause and stop actions.
 - Launcher icon and notification status icon based on the Free Noise Generator branding.
-- Idle screen dimming after 10 seconds without touch while the app is open.
+- Black and white main interface with a pure black startup/splash background.
+- Idle screensaver after 10 seconds without touch while the app is open.
+- Screensaver includes a warm ember/fire glow, stars, constellations, a soft milky-way wash and an occasional shooting star.
+- Settings dialog with a persistent on/off control for the screensaver.
+- About dialog with Noisyogui credit and a PayPal donation link.
 
 ## Audio Model
 
@@ -33,6 +37,13 @@ The output gain is boosted by 50% over the original default so the app has more 
 2. Let Android Studio sync Gradle.
 3. Select an emulator or connected Android phone.
 4. Press Run.
+
+## Tooling
+
+- Android Gradle Plugin 8.13.2.
+- Gradle wrapper 8.13.
+- Kotlin 2.0.21.
+- Java 17.
 
 ## Build From Terminal
 

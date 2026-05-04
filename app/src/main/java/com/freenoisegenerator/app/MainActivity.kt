@@ -12,9 +12,18 @@ import android.os.Handler
 import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,14 +42,18 @@ import androidx.compose.material.icons.automirrored.filled.VolumeDown
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ElevatedButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -50,15 +63,22 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.freenoisegenerator.app.service.NoiseService
 import com.freenoisegenerator.app.ui.theme.FreeNoiseGeneratorTheme
+import kotlin.math.PI
+import kotlin.math.sin
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -111,6 +131,11 @@ private fun NoiseApp() {
     var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
     var lastInteractionMillis by remember { mutableStateOf(System.currentTimeMillis()) }
     var isDimmed by remember { mutableStateOf(false) }
+    var showInfoDialog by remember { mutableStateOf(false) }
+    var showSettingsDialog by remember { mutableStateOf(false) }
+    var screensaverEnabled by remember {
+        mutableStateOf(preferences.getBoolean(KEY_SCREENSAVER_ENABLED, true))
+    }
 
     fun registerInteraction() {
         lastInteractionMillis = System.currentTimeMillis()
@@ -145,7 +170,11 @@ private fun NoiseApp() {
         }
     }
 
-    LaunchedEffect(lastInteractionMillis) {
+    LaunchedEffect(lastInteractionMillis, screensaverEnabled) {
+        if (!screensaverEnabled) {
+            isDimmed = false
+            return@LaunchedEffect
+        }
         kotlinx.coroutines.delay(IDLE_DIM_DELAY_MILLIS)
         if (System.currentTimeMillis() - lastInteractionMillis >= IDLE_DIM_DELAY_MILLIS) {
             isDimmed = true
@@ -165,6 +194,16 @@ private fun NoiseApp() {
 
     fun saveTimer() {
         preferences.edit().putInt(KEY_TIMER_STEPS, timerSteps.coerceIn(0, MAX_TIMER_STEPS)).apply()
+    }
+
+    fun setScreensaverEnabled(enabled: Boolean) {
+        screensaverEnabled = enabled
+        preferences.edit().putBoolean(KEY_SCREENSAVER_ENABLED, enabled).apply()
+        if (!enabled) {
+            isDimmed = false
+        } else {
+            registerInteraction()
+        }
     }
 
     fun startPlayback() {
@@ -189,18 +228,19 @@ private fun NoiseApp() {
             .fillMaxSize()
             .background(AppColors.Background)
             .pointerInput(Unit) {
-                detectTapGestures(
-                    onPress = {
+                awaitPointerEventScope {
+                    while (true) {
+                        awaitPointerEvent(PointerEventPass.Initial)
                         registerInteraction()
-                        tryAwaitRelease()
                     }
-                )
-            }
-            .padding(horizontal = 26.dp),
+                }
+            },
         contentAlignment = Alignment.Center
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 26.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -277,6 +317,21 @@ private fun NoiseApp() {
                             color = AppColors.TextMuted,
                             style = MaterialTheme.typography.labelLarge
                         )
+                        Spacer(Modifier.width(8.dp))
+                        IconButton(
+                            onClick = {
+                                registerInteraction()
+                                showSettingsDialog = true
+                            },
+                            modifier = Modifier.size(34.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "Settings",
+                                tint = AppColors.TextMuted,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -363,14 +418,305 @@ private fun NoiseApp() {
                 }
             }
         }
-        if (isDimmed) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(AppColors.IdleOverlay)
+        AnimatedVisibility(
+            visible = isDimmed,
+            enter = fadeIn(animationSpec = tween(durationMillis = 1_600)),
+            exit = fadeOut(animationSpec = tween(durationMillis = 450))
+        ) {
+            IdleRestOverlay()
+        }
+        if (showInfoDialog) {
+            InfoDialog(onDismiss = { showInfoDialog = false })
+        }
+        if (showSettingsDialog) {
+            SettingsDialog(
+                screensaverEnabled = screensaverEnabled,
+                onScreensaverChange = ::setScreensaverEnabled,
+                onInfoClick = {
+                    showSettingsDialog = false
+                    showInfoDialog = true
+                },
+                onDismiss = { showSettingsDialog = false }
             )
         }
     }
+}
+
+@Composable
+private fun SettingsDialog(
+    screensaverEnabled: Boolean,
+    onScreensaverChange: (Boolean) -> Unit,
+    onInfoClick: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = AppColors.Panel,
+        titleContentColor = AppColors.TextPrimary,
+        textContentColor = AppColors.TextMuted,
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = "Done", color = AppColors.Accent)
+            }
+        },
+        title = {
+            Text(
+                text = "Settings",
+                fontWeight = FontWeight.SemiBold
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text(text = "Screensaver")
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ElevatedButton(
+                        onClick = { onScreensaverChange(true) },
+                        colors = ButtonDefaults.elevatedButtonColors(
+                            containerColor = if (screensaverEnabled) AppColors.ButtonIdle else AppColors.ButtonActive,
+                            contentColor = if (screensaverEnabled) AppColors.ButtonIdleText else AppColors.TextPrimary
+                        )
+                    ) {
+                        Text(text = "On")
+                    }
+                    ElevatedButton(
+                        onClick = { onScreensaverChange(false) },
+                        colors = ButtonDefaults.elevatedButtonColors(
+                            containerColor = if (!screensaverEnabled) AppColors.ButtonIdle else AppColors.ButtonActive,
+                            contentColor = if (!screensaverEnabled) AppColors.ButtonIdleText else AppColors.TextPrimary
+                        )
+                    ) {
+                        Text(text = "Off")
+                    }
+                }
+                TextButton(onClick = onInfoClick) {
+                    Text(text = "Info", color = AppColors.Accent)
+                }
+            }
+        }
+    )
+}
+
+@Composable
+private fun IdleRestOverlay() {
+    val transition = rememberInfiniteTransition(label = "Idle ember rest")
+    val drift by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 11_000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "Ember drift"
+    )
+    val pulse by transition.animateFloat(
+        initialValue = 0.72f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 4_800, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "Ember pulse"
+    )
+    val shootingStar by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 8_500, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "Shooting star"
+    )
+
+    Canvas(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(AppColors.IdleOverlay)
+    ) {
+        drawRect(
+            brush = Brush.verticalGradient(
+                colors = listOf(
+                    AppColors.NightSky.copy(alpha = 0.46f),
+                    Color.Transparent
+                ),
+                startY = 0f,
+                endY = size.height * 0.52f
+            )
+        )
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    AppColors.MilkyWayViolet.copy(alpha = 0.18f),
+                    AppColors.MilkyWayBlue.copy(alpha = 0.12f),
+                    Color.Transparent
+                ),
+                center = Offset(size.width * 0.38f, size.height * 0.18f),
+                radius = size.width * 0.72f
+            ),
+            radius = size.width * 0.72f,
+            center = Offset(size.width * 0.38f, size.height * 0.18f)
+        )
+
+        val constellations = listOf(
+            listOf(
+                Offset(size.width * 0.16f, size.height * 0.10f),
+                Offset(size.width * 0.22f, size.height * 0.16f),
+                Offset(size.width * 0.30f, size.height * 0.13f),
+                Offset(size.width * 0.36f, size.height * 0.21f)
+            ),
+            listOf(
+                Offset(size.width * 0.58f, size.height * 0.08f),
+                Offset(size.width * 0.65f, size.height * 0.14f),
+                Offset(size.width * 0.72f, size.height * 0.12f),
+                Offset(size.width * 0.78f, size.height * 0.19f),
+                Offset(size.width * 0.69f, size.height * 0.24f)
+            ),
+            listOf(
+                Offset(size.width * 0.18f, size.height * 0.32f),
+                Offset(size.width * 0.27f, size.height * 0.29f),
+                Offset(size.width * 0.33f, size.height * 0.36f),
+                Offset(size.width * 0.43f, size.height * 0.34f)
+            )
+        )
+
+        constellations.forEach { stars ->
+            stars.zipWithNext().forEach { (start, end) ->
+                drawLine(
+                    color = AppColors.StarTrail.copy(alpha = 0.18f),
+                    start = start,
+                    end = end,
+                    strokeWidth = 1.2f,
+                    cap = StrokeCap.Round
+                )
+            }
+        }
+
+        repeat(64) { index ->
+            val xNoise = sin(index * 12.9898f + 0.41f).toFloat() * 0.5f + 0.5f
+            val yNoise = sin(index * 78.233f + 1.73f).toFloat() * 0.5f + 0.5f
+            val xDrift = sin(index * 3.17f).toFloat() * size.width * 0.025f
+            val x = size.width * (0.06f + xNoise * 0.88f) + xDrift
+            val y = size.height * (0.035f + yNoise * 0.42f)
+            val twinkle = 0.55f + 0.45f * sin((drift * 2.0 * PI + index * 0.83f).toFloat())
+            val radius = 1.0f + (index % 4) * 0.55f
+            drawCircle(
+                color = AppColors.Star.copy(alpha = (0.22f + twinkle * 0.34f).coerceIn(0f, 0.56f)),
+                radius = radius,
+                center = Offset(x, y)
+            )
+        }
+
+        constellations.flatten().forEachIndexed { index, star ->
+            val twinkle = 0.68f + 0.32f * sin((drift * 2.0 * PI + index * 1.4f).toFloat())
+            drawCircle(
+                color = AppColors.Star.copy(alpha = 0.52f + twinkle * 0.24f),
+                radius = 2.3f,
+                center = star
+            )
+        }
+
+        if (shootingStar < 0.42f) {
+            val progress = shootingStar / 0.42f
+            val head = Offset(
+                x = size.width * (0.12f + progress * 0.78f),
+                y = size.height * (0.12f + progress * 0.14f)
+            )
+            val tail = Offset(head.x - size.width * 0.18f, head.y - size.height * 0.07f)
+            val alpha = sin((progress * PI).toFloat()).coerceIn(0f, 1f) * 0.72f
+            drawLine(
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        Color.Transparent,
+                        AppColors.StarTrail.copy(alpha = alpha),
+                        AppColors.Star.copy(alpha = alpha * 0.75f)
+                    ),
+                    start = tail,
+                    end = head
+                ),
+                start = tail,
+                end = head,
+                strokeWidth = 3.2f,
+                cap = StrokeCap.Round
+            )
+            drawCircle(
+                color = AppColors.Star.copy(alpha = alpha),
+                radius = 3.0f,
+                center = head
+            )
+        }
+
+        drawRect(
+            brush = Brush.verticalGradient(
+                colors = listOf(
+                    Color.Transparent,
+                    AppColors.EmberWash.copy(alpha = 0.12f * pulse),
+                    AppColors.EmberGlow.copy(alpha = 0.22f * pulse)
+                ),
+                startY = size.height * 0.52f,
+                endY = size.height
+            )
+        )
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    AppColors.EmberGlow.copy(alpha = 0.32f * pulse),
+                    AppColors.EmberWash.copy(alpha = 0.16f * pulse),
+                    Color.Transparent
+                ),
+                center = Offset(size.width * 0.5f, size.height * 0.95f),
+                radius = size.width * 0.56f
+            ),
+            radius = size.width * 0.56f,
+            center = Offset(size.width * 0.5f, size.height * 0.95f)
+        )
+
+        repeat(26) { index ->
+            val seed = index * 0.137f
+            val rise = (drift + seed) % 1f
+            val wave = sin((drift * 2.0 * PI + index).toFloat())
+            val x = size.width * (0.12f + ((index * 0.061f) % 0.76f)) + wave * 14f
+            val y = size.height * (0.93f - rise * 0.16f)
+            val radius = 2.3f + (index % 4) * 1.5f
+            val alpha = (1f - rise) * 0.28f * pulse
+            drawCircle(
+                color = AppColors.EmberSpark.copy(alpha = alpha.coerceIn(0f, 0.3f)),
+                radius = radius,
+                center = Offset(x, y)
+            )
+        }
+    }
+}
+
+@Composable
+private fun InfoDialog(onDismiss: () -> Unit) {
+    val uriHandler = LocalUriHandler.current
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = AppColors.Panel,
+        titleContentColor = AppColors.TextPrimary,
+        textContentColor = AppColors.TextMuted,
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = "OK", color = AppColors.Accent)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = { uriHandler.openUri(PAYPAL_DONATION_URL) }) {
+                Text(text = "Donate with PayPal", color = AppColors.Accent)
+            }
+        },
+        title = {
+            Text(
+                text = "About Free Noise Generator",
+                fontWeight = FontWeight.SemiBold
+            )
+        },
+        text = {
+            Text(
+                text = "Created by Noisyogui.\n\nA calm tool for deep noise, focus, rest, and better sleep. Shape the low end, set a timer, and let the room soften.\n\nIf this app helps you relax, focus, or sleep a little better, you can support the project with a small PayPal donation."
+            )
+        }
+    )
 }
 
 @Composable
@@ -461,21 +807,29 @@ private fun BandSlider(
 }
 
 private object AppColors {
-    val Background = Color(0xFF060909)
-    val Panel = Color(0xFF101817)
-    val PanelBorder = Color(0xFF1D2A28)
-    val ButtonIdle = Color(0xFFBFEFD9)
-    val ButtonIdleText = Color(0xFF08231C)
-    val ButtonActive = Color(0xFF20302D)
-    val ButtonBorder = Color(0xFF47665D)
-    val ButtonBorderActive = Color(0xFF7FCFB6)
-    val Accent = Color(0xFFD9B86F)
-    val BandAccent = Color(0xFF8FC7FF)
-    val TimerAccent = Color(0xFFD7A7FF)
-    val Track = Color(0xFF283A36)
-    val TextPrimary = Color(0xFFF1F7F4)
-    val TextMuted = Color(0xFF9BAEA7)
-    val IdleOverlay = Color(0xE6000000)
+    val Background = Color(0xFF000000)
+    val Panel = Color(0xFF090909)
+    val PanelBorder = Color(0xFF2A2A2A)
+    val ButtonIdle = Color(0xFFF4F4F4)
+    val ButtonIdleText = Color(0xFF050505)
+    val ButtonActive = Color(0xFF191919)
+    val ButtonBorder = Color(0xFF6F6F6F)
+    val ButtonBorderActive = Color(0xFFE8E8E8)
+    val Accent = Color(0xFFFFFFFF)
+    val BandAccent = Color(0xFFE6E6E6)
+    val TimerAccent = Color(0xFFCFCFCF)
+    val Track = Color(0xFF2A2A2A)
+    val TextPrimary = Color(0xFFFFFFFF)
+    val TextMuted = Color(0xFFA8A8A8)
+    val IdleOverlay = Color(0xEA000000)
+    val NightSky = Color(0xFF10152A)
+    val MilkyWayBlue = Color(0xFF4B8FEA)
+    val MilkyWayViolet = Color(0xFF8E65D8)
+    val Star = Color(0xFFEAF3FF)
+    val StarTrail = Color(0xFFA8C7FF)
+    val EmberWash = Color(0xFF4A1C0C)
+    val EmberGlow = Color(0xFFC16424)
+    val EmberSpark = Color(0xFFFFC07A)
 }
 
 private fun Context.startNoisePlayback(
@@ -535,6 +889,7 @@ private const val KEY_VOLUME = "volume"
 private const val KEY_BASS_LEVEL = "bass_level"
 private const val KEY_LOW_MIDS_LEVEL = "low_mids_level"
 private const val KEY_TIMER_STEPS = "timer_steps"
+private const val KEY_SCREENSAVER_ENABLED = "screensaver_enabled"
 private const val DEFAULT_VOLUME = 0.85f
 private const val MAX_BAND_LEVEL = 0.5f
 private const val MAX_LOW_MIDS_LEVEL = 0.1f
@@ -546,3 +901,5 @@ private const val TIMER_STEP_MINUTES = 30
 private const val TIMER_STEP_MILLIS = TIMER_STEP_MINUTES * 60L * 1000L
 private const val TIMER_APPLY_DELAY_MILLIS = 5_000L
 private const val IDLE_DIM_DELAY_MILLIS = 10_000L
+private const val PAYPAL_DONATION_URL =
+    "https://www.paypal.com/donate/?business=VDWKX7KYKZB9Q&no_recurring=1&currency_code=EUR"
