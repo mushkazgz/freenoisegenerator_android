@@ -1,0 +1,10 @@
+<resources>
+    <style name="Theme.FreeNoiseGenerator" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:colorAccent">#9ED6C5</item>
+        <item name="android:navigationBarColor">#090D0C</item>
+        <item name="android:statusBarColor">#090D0C</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:fontFamily">sans</item>
+    </style>
+</resources>
