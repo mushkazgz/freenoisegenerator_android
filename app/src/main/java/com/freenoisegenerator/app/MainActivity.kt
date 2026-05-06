@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedVisibility
@@ -40,6 +41,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeDown
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
@@ -163,6 +165,7 @@ private fun NoiseApp() {
         }
     }
 
+    // Keep the countdown label live while the service owns the actual stop timer.
     LaunchedEffect(timerEndsAtMillis, isPlaying) {
         while (isPlaying && timerEndsAtMillis > 0L) {
             nowMillis = System.currentTimeMillis()
@@ -170,6 +173,7 @@ private fun NoiseApp() {
         }
     }
 
+    // The idle screensaver is visual only; any pointer event wakes the UI.
     LaunchedEffect(lastInteractionMillis, screensaverEnabled) {
         if (!screensaverEnabled) {
             isDimmed = false
@@ -206,8 +210,29 @@ private fun NoiseApp() {
         }
     }
 
+    fun openBluetoothSystemSettings() {
+        registerInteraction()
+        context.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
+    }
+
     fun startPlayback() {
         context.startNoisePlayback(volume, bassLevel, lowMidsLevel, timerSteps.toTimerMillis())
+    }
+
+    fun updatePlayback(
+        nextVolume: Float = volume,
+        nextBassLevel: Float = bassLevel,
+        nextLowMidsLevel: Float = lowMidsLevel
+    ) {
+        // Sliders should affect the running engine immediately, while preferences
+        // are saved only when the gesture finishes.
+        if (!isPlaying) return
+        context.startNoisePlayback(
+            volume = nextVolume,
+            bassLevel = nextBassLevel,
+            lowMidsLevel = nextLowMidsLevel,
+            timerMillis = timerSteps.toTimerMillis()
+        )
     }
 
     fun play() {
@@ -230,6 +255,8 @@ private fun NoiseApp() {
             .pointerInput(Unit) {
                 awaitPointerEventScope {
                     while (true) {
+                        // Listen before child controls consume gestures so slider
+                        // drags also dismiss the idle screensaver.
                         awaitPointerEvent(PointerEventPass.Initial)
                         registerInteraction()
                     }
@@ -346,10 +373,12 @@ private fun NoiseApp() {
                         Spacer(Modifier.width(8.dp))
                         Slider(
                             value = volume,
-                            onValueChange = { volume = it },
+                            onValueChange = {
+                                volume = it
+                                updatePlayback(nextVolume = it)
+                            },
                             onValueChangeFinished = {
                                 saveVolume()
-                                if (isPlaying) startPlayback()
                             },
                             colors = SliderDefaults.colors(
                                 thumbColor = AppColors.Accent,
@@ -371,24 +400,24 @@ private fun NoiseApp() {
                     BandSlider(
                         name = "Bass",
                         value = bassLevel,
-                        onValueChange = { bassLevel = it },
+                        onValueChange = {
+                            bassLevel = it
+                            updatePlayback(nextBassLevel = it)
+                        },
                         onValueChangeFinished = {
                             saveBandLevels()
-                            if (isPlaying) {
-                                startPlayback()
-                            }
                         }
                     )
                     BandSlider(
                         name = "Low mids",
                         value = lowMidsLevel,
                         maxValue = MAX_LOW_MIDS_LEVEL,
-                        onValueChange = { lowMidsLevel = it },
+                        onValueChange = {
+                            lowMidsLevel = it
+                            updatePlayback(nextLowMidsLevel = it)
+                        },
                         onValueChangeFinished = {
                             saveBandLevels()
-                            if (isPlaying) {
-                                startPlayback()
-                            }
                         }
                     )
                     TimerSlider(
@@ -404,6 +433,8 @@ private fun NoiseApp() {
                         onValueChangeFinished = {
                             saveTimer()
                             pendingTimerRunnable?.let(timerHandler::removeCallbacks)
+                            // Timer updates are delayed so accidental slider bumps
+                            // do not immediately replace an active countdown.
                             val runnable = Runnable {
                                 if (isPlaying) {
                                     startPlayback()
@@ -432,6 +463,7 @@ private fun NoiseApp() {
             SettingsDialog(
                 screensaverEnabled = screensaverEnabled,
                 onScreensaverChange = ::setScreensaverEnabled,
+                onBluetoothClick = ::openBluetoothSystemSettings,
                 onInfoClick = {
                     showSettingsDialog = false
                     showInfoDialog = true
@@ -446,6 +478,7 @@ private fun NoiseApp() {
 private fun SettingsDialog(
     screensaverEnabled: Boolean,
     onScreensaverChange: (Boolean) -> Unit,
+    onBluetoothClick: () -> Unit,
     onInfoClick: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -488,6 +521,21 @@ private fun SettingsDialog(
                         Text(text = "Off")
                     }
                 }
+                ElevatedButton(
+                    onClick = onBluetoothClick,
+                    colors = ButtonDefaults.elevatedButtonColors(
+                        containerColor = AppColors.ButtonActive,
+                        contentColor = AppColors.TextPrimary
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Bluetooth,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(text = "Bluetooth")
+                }
                 TextButton(onClick = onInfoClick) {
                     Text(text = "Info", color = AppColors.Accent)
                 }
@@ -498,6 +546,8 @@ private fun SettingsDialog(
 
 @Composable
 private fun IdleRestOverlay() {
+    // Canvas keeps the idle scene lightweight: no bitmap assets and no extra
+    // resource management for the ember glow, sky and constellation layer.
     val transition = rememberInfiniteTransition(label = "Idle ember rest")
     val drift by transition.animateFloat(
         initialValue = 0f,

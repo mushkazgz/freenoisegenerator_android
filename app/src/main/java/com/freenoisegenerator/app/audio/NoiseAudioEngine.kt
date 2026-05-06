@@ -9,6 +9,12 @@ import kotlin.math.max
 import kotlin.math.sin
 import kotlin.random.Random
 
+/**
+ * Streams procedural deep brown noise on a dedicated audio thread.
+ *
+ * The engine keeps playback file-free by generating white noise and shaping it
+ * through low-frequency filter bands before writing PCM samples to AudioTrack.
+ */
 class NoiseAudioEngine {
     @Volatile
     private var running = false
@@ -88,6 +94,7 @@ class NoiseAudioEngine {
             track.play()
             while (running && !Thread.currentThread().isInterrupted) {
                 for (index in buffer.indices) {
+                    // Smooth volume changes to avoid clicks when the slider moves.
                     currentVolume += (targetVolume - currentVolume) * VOLUME_SMOOTHING
                     val sample = generator.next(bassLevel, lowMidsLevel) * currentVolume * OUTPUT_GAIN
                     buffer[index] = (sample.coerceIn(-1f, 1f) * Short.MAX_VALUE).toInt().toShort()
@@ -103,6 +110,9 @@ class NoiseAudioEngine {
         }
     }
 
+    /**
+     * Turns white noise into the app's brown profile with two controllable bands.
+     */
     private class NoiseGenerator {
         private val random = Random(System.nanoTime())
         private val brownProfile = BrownBandProfile()
@@ -128,12 +138,16 @@ class NoiseAudioEngine {
 
             fun next(input: Double, bassLevel: Float, lowMidsLevel: Float): Double {
                 val bassGain = bassLevel.toDouble() / MAX_BAND_LEVEL
+                // Low mids are capped elsewhere at 10%, keeping this profile dark.
                 val lowMidsGain = lowMidsLevel.toDouble() / MAX_BAND_LEVEL
                 return (bass.next(input) * bassGain + lowMids.next(input) * lowMidsGain) *
                     BROWN_PROFILE_GAIN
             }
         }
 
+        /**
+         * One frequency band made from a high-pass, band-pass and low-pass chain.
+         */
         private class FilterBand(
             minFrequency: Double,
             centerFrequency: Double,
@@ -148,6 +162,9 @@ class NoiseAudioEngine {
                 highCut.process(bandPass.process(lowCut.process(input)))
         }
 
+        /**
+         * Minimal biquad implementation for realtime filter processing.
+         */
         private class Biquad(
             private val b0: Double,
             private val b1: Double,
