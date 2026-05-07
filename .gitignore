@@ -2,6 +2,9 @@
 .idea/
 build/
 local.properties
+keystore.properties
+*.jks
+*.keystore
 *.iml
 
 app/build/

@@ -1,0 +1,8 @@
+First public release of Free Noise Generator.
+
+- Deep brown procedural noise playback.
+- Volume, bass and low mids controls.
+- Timer up to 12 hours.
+- Background playback with notification controls.
+- Low-light idle screensaver.
+- Bluetooth settings shortcut.

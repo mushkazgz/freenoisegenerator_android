@@ -84,6 +84,8 @@ Minimizing the app keeps playback running. Removing the app from the Android rec
 - Java 17.
 - Minimum SDK 26.
 - Target SDK 35.
+- Version name 1.0.0.
+- Version code 1.
 
 ## Build From Terminal
 
@@ -100,6 +102,39 @@ The debug APK is generated at:
 ```text
 app/build/outputs/apk/debug/app-debug.apk
 ```
+
+## Release Preparation
+
+Release signing is configured through a private `keystore.properties` file that is intentionally ignored by Git.
+
+1. Copy `keystore.properties.example` to `keystore.properties`.
+2. Generate an upload keystore.
+3. Fill in the private keystore values.
+4. Build the Play Store bundle with:
+
+```powershell
+$env:JAVA_HOME = 'C:\Program Files\Android\Android Studio\jbr'
+$env:Path = "$env:JAVA_HOME\bin;$env:LOCALAPPDATA\Android\Sdk\platform-tools;$env:Path"
+.\gradlew.bat bundleRelease
+```
+
+The release Android App Bundle is generated at:
+
+```text
+app/build/outputs/bundle/release/app-release.aab
+```
+
+Without a private `keystore.properties` file, Gradle can generate the release bundle for validation, but the bundle is unsigned and is not ready for Play Store upload.
+
+Publishing support documents:
+
+- [Privacy Policy](PRIVACY_POLICY.md)
+- Public privacy policy URL for Play Console: `https://github.com/mushkazgz/freenoisegenerator_android/blob/main/PRIVACY_POLICY.md`
+- [Play Store listing draft](docs/play-store-listing.md)
+- [Data Safety draft](docs/data-safety.md)
+- [Play Console answers draft](docs/play-console-answers.md)
+- [Release checklist](docs/release-checklist.md)
+- [Reusable Play metadata](fastlane/metadata/android/en-US)
 
 ## Install On A Connected Phone
 

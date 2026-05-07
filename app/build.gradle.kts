@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -7,13 +9,38 @@ plugins {
 android {
     namespace = "com.freenoisegenerator.app"
     compileSdk = 35
+    val keystorePropertiesFile = rootProject.file("keystore.properties")
+    val keystoreProperties = Properties().apply {
+        if (keystorePropertiesFile.exists()) {
+            keystorePropertiesFile.inputStream().use(::load)
+        }
+    }
 
     defaultConfig {
         applicationId = "com.freenoisegenerator.app"
         minSdk = 26
         targetSdk = 35
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "1.0.0"
+    }
+
+    signingConfigs {
+        if (keystorePropertiesFile.exists()) {
+            create("release") {
+                storeFile = file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            if (keystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
     }
 
     compileOptions {
