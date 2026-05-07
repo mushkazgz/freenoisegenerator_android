@@ -83,15 +83,22 @@ import kotlin.math.PI
 import kotlin.math.sin
 
 class MainActivity : ComponentActivity() {
+    private var resumeSignal by mutableStateOf(0)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         requestNotificationPermission()
 
         setContent {
             FreeNoiseGeneratorTheme {
-                NoiseApp()
+                NoiseApp(resumeSignal = resumeSignal)
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        resumeSignal += 1
     }
 
     private fun requestNotificationPermission() {
@@ -106,7 +113,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun NoiseApp() {
+private fun NoiseApp(resumeSignal: Int) {
     val context = LocalContext.current
     val preferences = remember {
         context.getSharedPreferences("noise_settings", Context.MODE_PRIVATE)
@@ -144,19 +151,33 @@ private fun NoiseApp() {
         isDimmed = false
     }
 
+    LaunchedEffect(resumeSignal) {
+        registerInteraction()
+    }
+
     DisposableEffect(context) {
+        val activity = context as? ComponentActivity
         val receiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context?, intent: Intent?) {
-                if (intent?.action == NoiseService.ACTION_STATE_CHANGED) {
-                    isPlaying = intent.getBooleanExtra(NoiseService.EXTRA_IS_PLAYING, false)
-                    timerEndsAtMillis = intent.getLongExtra(NoiseService.EXTRA_TIMER_ENDS_AT_MILLIS, 0L)
+            override fun onReceive(receiverContext: Context?, intent: Intent?) {
+                when (intent?.action) {
+                    NoiseService.ACTION_STATE_CHANGED -> {
+                        isPlaying = intent.getBooleanExtra(NoiseService.EXTRA_IS_PLAYING, false)
+                        timerEndsAtMillis = intent.getLongExtra(NoiseService.EXTRA_TIMER_ENDS_AT_MILLIS, 0L)
+                    }
+
+                    NoiseService.ACTION_CLOSE_APP -> {
+                        activity?.finishAndRemoveTask()
+                    }
                 }
             }
         }
         ContextCompat.registerReceiver(
             context,
             receiver,
-            IntentFilter(NoiseService.ACTION_STATE_CHANGED),
+            IntentFilter().apply {
+                addAction(NoiseService.ACTION_STATE_CHANGED)
+                addAction(NoiseService.ACTION_CLOSE_APP)
+            },
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
         onDispose {
@@ -488,9 +509,16 @@ private fun SettingsDialog(
         titleContentColor = AppColors.TextPrimary,
         textContentColor = AppColors.TextMuted,
         confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(text = "Done", color = AppColors.Accent)
-            }
+            DialogActionButton(
+                text = "Done",
+                onClick = onDismiss
+            )
+        },
+        dismissButton = {
+            DialogActionButton(
+                text = "Info",
+                onClick = onInfoClick
+            )
         },
         title = {
             Text(
@@ -536,18 +564,31 @@ private fun SettingsDialog(
                     Spacer(Modifier.width(8.dp))
                     Text(text = "Bluetooth")
                 }
-                TextButton(onClick = onInfoClick) {
-                    Text(text = "Info", color = AppColors.Accent)
-                }
             }
-        }
+        },
     )
+}
+
+@Composable
+private fun DialogActionButton(
+    text: String,
+    onClick: () -> Unit
+) {
+    ElevatedButton(
+        onClick = onClick,
+        colors = ButtonDefaults.elevatedButtonColors(
+            containerColor = AppColors.ButtonActive,
+            contentColor = AppColors.TextPrimary
+        )
+    ) {
+        Text(text = text)
+    }
 }
 
 @Composable
 private fun IdleRestOverlay() {
     // Canvas keeps the idle scene lightweight: no bitmap assets and no extra
-    // resource management for the ember glow, sky and constellation layer.
+    // resource management for the ember glow and simple star field.
     val transition = rememberInfiniteTransition(label = "Idle ember rest")
     val drift by transition.animateFloat(
         initialValue = 0f,
@@ -606,61 +647,18 @@ private fun IdleRestOverlay() {
             center = Offset(size.width * 0.38f, size.height * 0.18f)
         )
 
-        val constellations = listOf(
-            listOf(
-                Offset(size.width * 0.16f, size.height * 0.10f),
-                Offset(size.width * 0.22f, size.height * 0.16f),
-                Offset(size.width * 0.30f, size.height * 0.13f),
-                Offset(size.width * 0.36f, size.height * 0.21f)
-            ),
-            listOf(
-                Offset(size.width * 0.58f, size.height * 0.08f),
-                Offset(size.width * 0.65f, size.height * 0.14f),
-                Offset(size.width * 0.72f, size.height * 0.12f),
-                Offset(size.width * 0.78f, size.height * 0.19f),
-                Offset(size.width * 0.69f, size.height * 0.24f)
-            ),
-            listOf(
-                Offset(size.width * 0.18f, size.height * 0.32f),
-                Offset(size.width * 0.27f, size.height * 0.29f),
-                Offset(size.width * 0.33f, size.height * 0.36f),
-                Offset(size.width * 0.43f, size.height * 0.34f)
-            )
-        )
-
-        constellations.forEach { stars ->
-            stars.zipWithNext().forEach { (start, end) ->
-                drawLine(
-                    color = AppColors.StarTrail.copy(alpha = 0.18f),
-                    start = start,
-                    end = end,
-                    strokeWidth = 1.2f,
-                    cap = StrokeCap.Round
-                )
-            }
-        }
-
-        repeat(64) { index ->
+        repeat(92) { index ->
             val xNoise = sin(index * 12.9898f + 0.41f).toFloat() * 0.5f + 0.5f
             val yNoise = sin(index * 78.233f + 1.73f).toFloat() * 0.5f + 0.5f
             val xDrift = sin(index * 3.17f).toFloat() * size.width * 0.025f
             val x = size.width * (0.06f + xNoise * 0.88f) + xDrift
             val y = size.height * (0.035f + yNoise * 0.42f)
             val twinkle = 0.55f + 0.45f * sin((drift * 2.0 * PI + index * 0.83f).toFloat())
-            val radius = 1.0f + (index % 4) * 0.55f
+            val radius = 0.85f + (index % 4) * 0.48f
             drawCircle(
-                color = AppColors.Star.copy(alpha = (0.22f + twinkle * 0.34f).coerceIn(0f, 0.56f)),
+                color = AppColors.Star.copy(alpha = (0.18f + twinkle * 0.28f).coerceIn(0f, 0.48f)),
                 radius = radius,
                 center = Offset(x, y)
-            )
-        }
-
-        constellations.flatten().forEachIndexed { index, star ->
-            val twinkle = 0.68f + 0.32f * sin((drift * 2.0 * PI + index * 1.4f).toFloat())
-            drawCircle(
-                color = AppColors.Star.copy(alpha = 0.52f + twinkle * 0.24f),
-                radius = 2.3f,
-                center = star
             )
         }
 
@@ -862,7 +860,7 @@ private object AppColors {
     val PanelBorder = Color(0xFF2A2A2A)
     val ButtonIdle = Color(0xFFF4F4F4)
     val ButtonIdleText = Color(0xFF050505)
-    val ButtonActive = Color(0xFF191919)
+    val ButtonActive = Color(0xFF303030)
     val ButtonBorder = Color(0xFF6F6F6F)
     val ButtonBorderActive = Color(0xFFE8E8E8)
     val Accent = Color(0xFFFFFFFF)

@@ -16,6 +16,7 @@ The app is intentionally minimal: one main playback screen, persistent controls,
 - Procedural deep brown noise generation with `AudioTrack`.
 - Background playback through a `ForegroundService`.
 - Persistent media notification with compact pause and stop actions.
+- Playback continues when the app is minimized, but stops when the user deliberately removes the app from recents.
 - Large play/pause control.
 - Persistent `Volume`, `Bass`, `Low mids` and `Timer` settings.
 - `Volume`, `Bass` and `Low mids` apply immediately while dragging.
@@ -31,7 +32,7 @@ The app is intentionally minimal: one main playback screen, persistent controls,
 - About dialog with Noisyogui credit and PayPal donation link.
 - Launcher icon and notification status icon based on the Free Noise Generator branding.
 - Idle screensaver after 10 seconds without touch.
-- Screensaver includes a warm ember/fire glow, stars, constellations, a soft milky-way wash and an occasional shooting star.
+- Screensaver includes a warm ember/fire glow, a simple scattered star field, a soft milky-way wash and an occasional shooting star.
 
 ## Audio Model
 
@@ -55,6 +56,18 @@ Android does not provide a reliable public API for normal Play Store apps to for
 When the app is open in the foreground and no touch interaction happens for 10 seconds, the idle screensaver fades in.
 
 Any touch interaction wakes the app immediately, including taps, button presses and slider drags. The screensaver can be disabled from `Settings`.
+
+Returning to the app from the background also wakes the interface so the screensaver never stays on after resume.
+
+## Notification Behavior
+
+The notification exposes compact `Pause` and `Stop` controls.
+
+`Pause` stops audio playback but keeps the service notification available with a `Play` action. `Stop` from the notification fully removes foreground playback, clears the notification and closes the app task if the main screen is still alive.
+
+The main in-app playback button only starts or stops audio. It does not close the app.
+
+Minimizing the app keeps playback running. Removing the app from the Android recents screen is treated as an intentional close and stops playback.
 
 ## Run From Android Studio
 
