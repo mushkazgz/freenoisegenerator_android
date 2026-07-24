@@ -6,5 +6,7 @@ keystore.properties
 *.jks
 *.keystore
 *.iml
+__pycache__/
+*.pyc
 
 app/build/

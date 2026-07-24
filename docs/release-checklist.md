@@ -24,6 +24,8 @@
 4. Keep `keystore.properties` and the keystore file private.
 5. Back up the keystore and passwords somewhere safe before uploading to Play Console.
 
+Current backup note: `release-upload.jks` and `keystore.properties` have been backed up to the developer's MEGA account.
+
 Example command:
 
 ```powershell
