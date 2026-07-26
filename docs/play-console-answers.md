@@ -12,6 +12,13 @@ Reason: The app does not require login, subscription, account creation or privat
 
 Suggested answer: No, the app does not contain ads.
 
+## Advertising ID
+
+Suggested answer: No, the app does not use an advertising ID.
+
+The app does not include an advertising SDK and does not declare the
+`com.google.android.gms.permission.AD_ID` permission.
+
 ## Content Rating Notes
 
 Suggested positioning:

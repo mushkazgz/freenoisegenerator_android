@@ -145,6 +145,7 @@ app/build/outputs/apk/debug/app-debug.apk
 ## Release Preparation
 
 Release signing is configured through a private `keystore.properties` file that is intentionally ignored by Git.
+The current Play Store release candidate is `1.1.0 (3)`.
 
 1. Copy `keystore.properties.example` to `keystore.properties`.
 2. Generate an upload keystore.
@@ -172,6 +173,8 @@ Publishing support documents:
 - [Play Store listing draft](docs/play-store-listing.md)
 - [Data Safety draft](docs/data-safety.md)
 - [Play Console answers draft](docs/play-console-answers.md)
+- [Release notes for 1.1.0](docs/release-notes-1.1.0.md)
+- [Verified artifact details for 1.1.0](docs/release-artifact-1.1.0.md)
 - [Release checklist](docs/release-checklist.md)
 - [Reusable Play metadata](fastlane/metadata/android/en-US)
 

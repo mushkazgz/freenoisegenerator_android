@@ -1,5 +1,7 @@
 # Play Store Release Checklist
 
+Current release candidate: `1.1.0 (3)`.
+
 ## Before Upload
 
 - Confirm final app name: Free Noise Generator.
@@ -15,6 +17,8 @@
 - Test timer values including 0, 30 minutes and a multi-hour timer.
 - Test screensaver on/off from Settings.
 - Generate final phone screenshots.
+- Submit this release before August 31, 2026. Google Play requires API 36 for
+  new mobile app submissions and updates from that date.
 
 ## Signing Setup
 
@@ -55,6 +59,7 @@ If `keystore.properties` is missing, Gradle may still generate a bundle for vali
   - Privacy policy.
   - Data safety.
   - Ads: No, unless this changes later.
+  - Advertising ID: No. The app does not declare the `AD_ID` permission.
   - App access: No special access required.
   - Content rating questionnaire.
   - Target audience.
@@ -63,3 +68,9 @@ If `keystore.properties` is missing, Gradle may still generate a bundle for vali
 - Start with internal testing.
 - Move to closed testing if required by the developer account.
 - Request production access when testing requirements are satisfied.
+
+## Next Platform Update
+
+Before uploading any release on or after August 31, 2026, migrate
+`compileSdk` and `targetSdk` from API 35 to API 36 and repeat the real-device
+playback, notification, timer, rotation and background-service tests.
