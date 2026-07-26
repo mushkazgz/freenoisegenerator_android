@@ -50,7 +50,9 @@ class NoiseService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        stopPlayback()
+        if (!playbackSnapshot().isPlaying) {
+            stopPlayback()
+        }
         super.onTaskRemoved(rootIntent)
     }
 
@@ -68,6 +70,10 @@ class NoiseService : Service() {
         currentVolume = volume
         currentBassLevel = bassLevel
         currentLowMidsLevel = lowMidsLevel
+        if (volume <= 0f) {
+            pausePlayback()
+            return
+        }
         startForeground(NOTIFICATION_ID, notification(isPlaying = true))
         engine.start(volume, bassLevel, lowMidsLevel)
         engine.setVolume(volume)
@@ -83,10 +89,17 @@ class NoiseService : Service() {
         startForeground(NOTIFICATION_ID, notification(isPlaying = false))
     }
 
-    private fun stopPlayback(closeApp: Boolean = false) {
+    private fun stopPlayback(
+        closeApp: Boolean = false,
+        timerFinished: Boolean = false
+    ) {
         cancelTimer()
         engine.stop()
-        broadcastState(isPlaying = false, timerEndsAtMillis = 0L)
+        broadcastState(
+            isPlaying = false,
+            timerEndsAtMillis = 0L,
+            timerFinished = timerFinished
+        )
         if (closeApp) {
             broadcastCloseApp()
         }
@@ -103,7 +116,7 @@ class NoiseService : Service() {
         cancelTimer()
         if (timerMillis <= 0L) return
 
-        stopRunnable = Runnable { stopPlayback() }.also {
+        stopRunnable = Runnable { stopPlayback(timerFinished = true) }.also {
             handler.postDelayed(it, timerMillis)
         }
     }
@@ -180,11 +193,21 @@ class NoiseService : Service() {
         manager.createNotificationChannel(channel)
     }
 
-    private fun broadcastState(isPlaying: Boolean, timerEndsAtMillis: Long) {
+    private fun broadcastState(
+        isPlaying: Boolean,
+        timerEndsAtMillis: Long,
+        timerFinished: Boolean = false
+    ) {
+        playbackSnapshot = PlaybackSnapshot(
+            isPlaying = isPlaying,
+            volume = currentVolume,
+            timerEndsAtMillis = timerEndsAtMillis
+        )
         val intent = Intent(ACTION_STATE_CHANGED)
             .setPackage(packageName)
             .putExtra(EXTRA_IS_PLAYING, isPlaying)
             .putExtra(EXTRA_TIMER_ENDS_AT_MILLIS, timerEndsAtMillis)
+            .putExtra(EXTRA_TIMER_FINISHED, timerFinished)
         sendBroadcast(intent)
     }
 
@@ -194,6 +217,19 @@ class NoiseService : Service() {
     }
 
     companion object {
+        data class PlaybackSnapshot(
+            val isPlaying: Boolean,
+            val volume: Float,
+            val timerEndsAtMillis: Long
+        )
+
+        @Volatile
+        private var playbackSnapshot = PlaybackSnapshot(
+            isPlaying = false,
+            volume = 0f,
+            timerEndsAtMillis = 0L
+        )
+
         const val ACTION_PLAY = "com.freenoisegenerator.app.action.PLAY"
         const val ACTION_PAUSE = "com.freenoisegenerator.app.action.PAUSE"
         const val ACTION_STOP = "com.freenoisegenerator.app.action.STOP"
@@ -206,6 +242,7 @@ class NoiseService : Service() {
         const val EXTRA_TIMER_MILLIS = "extra_timer_millis"
         const val EXTRA_IS_PLAYING = "extra_is_playing"
         const val EXTRA_TIMER_ENDS_AT_MILLIS = "extra_timer_ends_at_millis"
+        const val EXTRA_TIMER_FINISHED = "extra_timer_finished"
 
         private const val CHANNEL_ID = "noise_playback"
         private const val NOTIFICATION_ID = 1001
@@ -213,6 +250,8 @@ class NoiseService : Service() {
         private const val DEFAULT_BASS_LEVEL = 0.5f
         private const val DEFAULT_LOW_MIDS_LEVEL = 0.1f
         private const val MAX_LOW_MIDS_LEVEL = 0.1f
+
+        fun playbackSnapshot(): PlaybackSnapshot = playbackSnapshot
 
         fun playIntent(
             context: Context,

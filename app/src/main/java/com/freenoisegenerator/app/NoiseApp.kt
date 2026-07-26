@@ -34,8 +34,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -56,12 +58,15 @@ import com.freenoisegenerator.app.ui.screensaver.PixelFireScreensaver
 @Composable
 internal fun NoiseApp(resumeSignal: Int) {
     val context = LocalContext.current
+    val initialPlayback = remember { NoiseService.playbackSnapshot() }
     val preferences = remember {
         context.getSharedPreferences("noise_settings", Context.MODE_PRIVATE)
     }
-    var isPlaying by remember { mutableStateOf(false) }
-    var volume by remember {
-        mutableStateOf(preferences.getFloat(KEY_VOLUME, DEFAULT_VOLUME))
+    var isPlaying by remember { mutableStateOf(initialPlayback.isPlaying) }
+    var volume by rememberSaveable {
+        mutableFloatStateOf(
+            if (initialPlayback.isPlaying) initialPlayback.volume else 0f
+        )
     }
     var bassLevel by remember {
         mutableStateOf(
@@ -75,15 +80,12 @@ internal fun NoiseApp(resumeSignal: Int) {
                 .coerceIn(0f, MAX_LOW_MIDS_LEVEL)
         )
     }
-    var timerSteps by remember {
-        mutableStateOf(
-            preferences.getInt(KEY_TIMER_STEPS, DEFAULT_TIMER_STEPS)
-                .coerceIn(0, MAX_TIMER_STEPS)
-        )
-    }
+    var timerSteps by rememberSaveable { mutableStateOf(DEFAULT_TIMER_STEPS) }
     val timerHandler = remember { Handler(Looper.getMainLooper()) }
     var pendingTimerRunnable by remember { mutableStateOf<Runnable?>(null) }
-    var timerEndsAtMillis by remember { mutableStateOf(0L) }
+    var timerEndsAtMillis by remember {
+        mutableStateOf(initialPlayback.timerEndsAtMillis)
+    }
     var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
     var lastInteractionMillis by remember { mutableStateOf(System.currentTimeMillis()) }
     var isDimmed by remember { mutableStateOf(false) }
@@ -115,6 +117,13 @@ internal fun NoiseApp(resumeSignal: Int) {
                             NoiseService.EXTRA_TIMER_ENDS_AT_MILLIS,
                             0L
                         )
+                        if (intent.getBooleanExtra(
+                                NoiseService.EXTRA_TIMER_FINISHED,
+                                false
+                            )
+                        ) {
+                            timerSteps = DEFAULT_TIMER_STEPS
+                        }
                     }
 
                     NoiseService.ACTION_CLOSE_APP -> activity?.finishAndRemoveTask()
@@ -154,20 +163,10 @@ internal fun NoiseApp(resumeSignal: Int) {
         }
     }
 
-    fun saveVolume() {
-        preferences.edit().putFloat(KEY_VOLUME, volume).apply()
-    }
-
     fun saveBandLevels() {
         preferences.edit()
             .putFloat(KEY_BASS_LEVEL, bassLevel.coerceIn(0f, MAX_BAND_LEVEL))
             .putFloat(KEY_LOW_MIDS_LEVEL, lowMidsLevel.coerceIn(0f, MAX_LOW_MIDS_LEVEL))
-            .apply()
-    }
-
-    fun saveTimer() {
-        preferences.edit()
-            .putInt(KEY_TIMER_STEPS, timerSteps.coerceIn(0, MAX_TIMER_STEPS))
             .apply()
     }
 
@@ -195,14 +194,16 @@ internal fun NoiseApp(resumeSignal: Int) {
             volume = nextVolume,
             bassLevel = nextBassLevel,
             lowMidsLevel = nextLowMidsLevel,
-            timerMillis = timerSteps.toTimerMillis()
+            timerMillis = activeTimerMillis(
+                selectedSteps = timerSteps,
+                timerEndsAtMillis = timerEndsAtMillis,
+                nowMillis = System.currentTimeMillis()
+            )
         )
     }
 
     fun play() {
-        saveVolume()
         saveBandLevels()
-        saveTimer()
         startPlayback()
         isPlaying = true
     }
@@ -220,7 +221,6 @@ internal fun NoiseApp(resumeSignal: Int) {
     }
 
     fun applyTimerSelection() {
-        saveTimer()
         pendingTimerRunnable?.let(timerHandler::removeCallbacks)
         val runnable = Runnable {
             if (isPlaying) startPlayback()
@@ -251,15 +251,25 @@ internal fun NoiseApp(resumeSignal: Int) {
             maxBassLevel = MAX_BAND_LEVEL,
             lowMidsLevel = lowMidsLevel,
             maxLowMidsLevel = MAX_LOW_MIDS_LEVEL,
-            timerSteps = timerSteps,
+            timerDialSteps = timerDialPosition(
+                selectedSteps = timerSteps,
+                timerEndsAtMillis = timerEndsAtMillis,
+                nowMillis = nowMillis
+            ),
             maxTimerSteps = MAX_TIMER_STEPS,
             timerDescription = timerDisplayText(timerSteps, timerEndsAtMillis, nowMillis),
-            onTogglePlayback = { if (isPlaying) pause() else play() },
             onVolumeChange = {
                 volume = it
-                updatePlayback(nextVolume = it)
+                when {
+                    it <= 0f -> {
+                        if (isPlaying) pause()
+                    }
+
+                    !isPlaying -> play()
+                    else -> updatePlayback(nextVolume = it)
+                }
             },
-            onVolumeChangeFinished = ::saveVolume,
+            onVolumeChangeFinished = {},
             onBassChange = {
                 bassLevel = it
                 updatePlayback(nextBassLevel = it)
@@ -475,6 +485,29 @@ private fun Context.pauseNoisePlayback() {
 
 private fun Int.toTimerMillis(): Long = this.toLong() * TIMER_STEP_MILLIS
 
+private fun activeTimerMillis(
+    selectedSteps: Int,
+    timerEndsAtMillis: Long,
+    nowMillis: Long
+): Long =
+    if (timerEndsAtMillis > nowMillis) {
+        timerEndsAtMillis - nowMillis
+    } else {
+        selectedSteps.toTimerMillis()
+    }
+
+private fun timerDialPosition(
+    selectedSteps: Int,
+    timerEndsAtMillis: Long,
+    nowMillis: Long
+): Float =
+    if (timerEndsAtMillis > 0L) {
+        ((timerEndsAtMillis - nowMillis).coerceAtLeast(0L).toFloat() /
+            TIMER_STEP_MILLIS).coerceIn(0f, MAX_TIMER_STEPS.toFloat())
+    } else {
+        selectedSteps.coerceIn(0, MAX_TIMER_STEPS).toFloat()
+    }
+
 private fun timerDisplayText(steps: Int, timerEndsAtMillis: Long, nowMillis: Long): String {
     if (timerEndsAtMillis > 0L) {
         return ((timerEndsAtMillis - nowMillis).coerceAtLeast(0L) / 1_000L)
@@ -503,12 +536,9 @@ private fun Long.toCountdownLabel(): String {
         seconds.toString().padStart(2, '0')
 }
 
-private const val KEY_VOLUME = "volume"
 private const val KEY_BASS_LEVEL = "bass_level"
 private const val KEY_LOW_MIDS_LEVEL = "low_mids_level"
-private const val KEY_TIMER_STEPS = "timer_steps"
 private const val KEY_SCREENSAVER_ENABLED = "screensaver_enabled"
-private const val DEFAULT_VOLUME = 0.85f
 private const val MAX_BAND_LEVEL = 0.5f
 private const val MAX_LOW_MIDS_LEVEL = 0.1f
 private const val DEFAULT_BASS_LEVEL = 0.5f

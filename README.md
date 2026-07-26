@@ -13,19 +13,24 @@ The app is intentionally focused: one immersive playback console, persistent con
 - Kotlin + Jetpack Compose.
 - Responsive, edge-to-edge Android interface with portrait and landscape support.
 - Responsive analog-console artwork with warm wood, black metal and amber details.
+- Unified black, ivory, aged-gold, copper and amber brand palette across app and store icons.
 - Procedural deep brown noise generation with `AudioTrack`.
 - Background playback through a `ForegroundService`.
 - Persistent media notification with compact pause and stop actions.
-- Playback continues when the app is minimized, but stops when the user deliberately removes the app from recents.
+- Active playback continues when the app is minimized or removed from recents.
 - Animated rotary controls for `Volume`, `Bass`, `Low mids` and `Timer`.
+- Mechanical rotary detents with a pronounced system-respecting haptic click at every step.
 - Large touch targets and adjustable accessibility semantics despite the compact artwork.
-- Amber playback light that acts as the main play/pause control and pulses while audio is active.
-- Persistent `Volume`, `Bass`, `Low mids` and `Timer` settings.
+- Amber playback light that reflects playback state and pulses while audio is active.
+- Persistent `Bass` and `Low mids` settings.
+- `Volume` always starts at zero so every fresh app launch begins silently in the off position.
+- `Timer` always starts at `Off` on a fresh app launch.
 - `Volume`, `Bass` and `Low mids` apply immediately while dragging.
 - `Low mids` is visually 0-100%, but internally capped at 10% for a darker sound.
 - Timer from off to 12 hours in 30 minute steps.
 - Timer changes are applied 5 seconds after releasing the rotary control.
 - Live timer value and countdown integrated into the console artwork.
+- Timer dial rotates continuously toward `Off` as the countdown progresses.
 - Playback stops automatically when the countdown reaches zero.
 - Settings dialog with:
   - Screensaver on/off.
@@ -51,7 +56,7 @@ The output gain is boosted by 50% over the original default so the app has more 
 
 The main screen is rendered from one fixed 1024 x 1535 artwork and four transparent knob sprites. A shared source-coordinate transform positions the background, knobs, playback light and settings hotspot, so every interactive layer stays aligned when the available phone or tablet viewport changes.
 
-Drag a knob vertically to adjust it. The audio engine receives `Volume`, `Bass` and `Low mids` changes continuously during the gesture; the preference is persisted when the gesture ends. Rotary movement uses a short visual interpolation without delaying the underlying audio value.
+Drag a knob in any direction to adjust it: right or up increases the value, while left or down decreases it. Diagonal movement combines both axes without doubling the adjustment speed. Each control snaps to its visual scale: 27 positions for `Volume`, 19 positions for each tone band and 25 half-hour positions for `Timer`. Crossing a position produces a pronounced Android haptic click when system haptics are enabled. Moving `Volume` to zero pauses playback; moving it away from zero starts playback, with the strongest haptic response in both directions. A fresh app launch always resets `Volume` to zero. The audio engine receives `Volume`, `Bass` and `Low mids` changes immediately at every detent; band preferences are persisted when the gesture ends. Rotary movement uses a short visual interpolation without delaying the underlying audio value.
 
 The original static timer numbers are removed from the production artwork because the app timer runs from `Off` to 12 hours. The current duration or live countdown is drawn beneath the timer knob at runtime.
 
@@ -63,7 +68,7 @@ Android does not provide a reliable public API for normal Play Store apps to for
 
 ## Screensaver Behavior
 
-When the app is open in the foreground and no touch interaction happens for 10 seconds, the idle screensaver fades in and temporarily hides the Android system bars. A fixed bonfire image provides the logs and ambient light while a low-resolution heat simulation produces non-repeating pixel-art flames without video or animated image assets. On tall displays the scene is deliberately zoomed and centered so the fire remains prominent instead of being pinned to the bottom edge.
+When the app is open in the foreground and no touch interaction happens for 10 seconds, the idle screensaver fades in and temporarily hides the Android system bars. A fixed bonfire image provides the logs and ambient light while a low-resolution heat simulation produces non-repeating pixel-art flames without video or animated image assets. The procedural layer uses a tapered, drifting mask with intensity-based transparency so the animated flame blends into the logs without rectangular edges. The scene scales from the image width and remains centered in both portrait and landscape layouts.
 
 Any touch interaction wakes the app immediately, including taps, button presses and slider drags. The screensaver can be disabled from `Settings`.
 
@@ -77,7 +82,9 @@ The notification exposes compact `Pause` and `Stop` controls.
 
 The main in-app playback button only starts or stops audio. It does not close the app.
 
-Minimizing the app keeps playback running. Removing the app from the Android recents screen is treated as an intentional close and stops playback.
+Minimizing the app or removing its task from Android recents keeps active playback running in the foreground service. Reopening the app restores the live volume, playback light and timer countdown.
+
+If playback is paused when the task is removed, the service and notification close normally. Active playback can always be stopped by moving `Volume` to zero or using the notification `Stop` action.
 
 ## Run From Android Studio
 
@@ -108,6 +115,16 @@ powershell -ExecutionPolicy Bypass -File .\tools\extract-mainframe-assets.ps1 `
 ```
 
 The script copies the background, removes obsolete timer-number glyphs without damaging nearby dial marks, and exports circular transparent sprites for each knob.
+
+## Rebuild Brand Assets
+
+The checked-in launcher and Play Store assets use the same warm palette as the analog console. After updating the 512 px store icon, regenerate every Android launcher density with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\rebuild-brand-assets.ps1
+```
+
+Android notification icons remain white monochrome vectors because status bar icons must use a system-tinted silhouette.
 
 ## Build From Terminal
 

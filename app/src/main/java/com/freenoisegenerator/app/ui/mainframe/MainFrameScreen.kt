@@ -1,5 +1,7 @@
 package com.freenoisegenerator.app.ui.mainframe
 
+import android.view.HapticFeedbackConstants
+import android.view.View
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -23,6 +25,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -39,6 +42,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
@@ -66,10 +70,9 @@ fun MainFrameScreen(
     maxBassLevel: Float,
     lowMidsLevel: Float,
     maxLowMidsLevel: Float,
-    timerSteps: Int,
+    timerDialSteps: Float,
     maxTimerSteps: Int,
     timerDescription: String,
-    onTogglePlayback: () -> Unit,
     onVolumeChange: (Float) -> Unit,
     onVolumeChangeFinished: () -> Unit,
     onBassChange: (Float) -> Unit,
@@ -134,6 +137,8 @@ fun MainFrameScreen(
             sourceTouchDiameter = 270f,
             value = volume,
             valueRange = 0f..1f,
+            detentCount = VOLUME_DETENT_COUNT,
+            strongOffDetentHaptic = true,
             imageScale = imageScale,
             imageOffset = Offset(imageOffsetX, imageOffsetY),
             onValueChange = onVolumeChange,
@@ -148,6 +153,7 @@ fun MainFrameScreen(
             sourceTouchDiameter = 120f,
             value = bassLevel,
             valueRange = 0f..maxBassLevel,
+            detentCount = BAND_DETENT_COUNT,
             imageScale = imageScale,
             imageOffset = Offset(imageOffsetX, imageOffsetY),
             onValueChange = onBassChange,
@@ -162,6 +168,7 @@ fun MainFrameScreen(
             sourceTouchDiameter = 120f,
             value = lowMidsLevel,
             valueRange = 0f..maxLowMidsLevel,
+            detentCount = BAND_DETENT_COUNT,
             imageScale = imageScale,
             imageOffset = Offset(imageOffsetX, imageOffsetY),
             onValueChange = onLowMidsChange,
@@ -174,9 +181,10 @@ fun MainFrameScreen(
             sourceCenter = Offset(679f, 984f),
             sourceVisualDiameter = 122f,
             sourceTouchDiameter = 155f,
-            value = timerSteps.toFloat(),
+            value = timerDialSteps,
             valueRange = 0f..maxTimerSteps.toFloat(),
-            steps = maxTimerSteps - 1,
+            detentCount = maxTimerSteps + 1,
+            snapDisplayedValue = false,
             imageScale = imageScale,
             imageOffset = Offset(imageOffsetX, imageOffsetY),
             onValueChange = { onTimerChange(it.roundToInt()) },
@@ -193,8 +201,7 @@ fun MainFrameScreen(
             isPlaying = isPlaying,
             sourceCenter = Offset(291f, 630f),
             imageScale = imageScale,
-            imageOffset = Offset(imageOffsetX, imageOffsetY),
-            onClick = onTogglePlayback
+            imageOffset = Offset(imageOffsetX, imageOffsetY)
         )
         SettingsHotspot(
             sourceCenter = Offset(757f, 548f),
@@ -215,13 +222,18 @@ private fun MainFrameKnob(
     sourceTouchDiameter: Float,
     value: Float,
     valueRange: ClosedFloatingPointRange<Float>,
+    detentCount: Int,
+    snapDisplayedValue: Boolean = true,
+    strongOffDetentHaptic: Boolean = false,
     imageScale: Float,
     imageOffset: Offset,
     onValueChange: (Float) -> Unit,
-    onValueChangeFinished: () -> Unit,
-    steps: Int = 0
+    onValueChangeFinished: () -> Unit
 ) {
+    require(detentCount >= 2) { "A rotary control needs at least two detents." }
+
     val density = LocalDensity.current
+    val view = LocalView.current
     val visualDiameterPx = sourceVisualDiameter * imageScale
     val minimumTouchPx = with(density) { MINIMUM_TOUCH_SIZE.toPx() }
     val touchDiameterPx = max(sourceTouchDiameter * imageScale, minimumTouchPx)
@@ -233,7 +245,15 @@ private fun MainFrameKnob(
     val currentOnValueChange by rememberUpdatedState(onValueChange)
     val currentOnValueChangeFinished by rememberUpdatedState(onValueChangeFinished)
     var dragValue by remember { mutableFloatStateOf(value) }
-    val fraction = ((value - valueRange.start) /
+    var activeDetentIndex by remember {
+        mutableIntStateOf(value.detentIndex(valueRange, detentCount))
+    }
+    val displayedValue = if (snapDisplayedValue) {
+        value.snapToDetent(valueRange, detentCount)
+    } else {
+        value.coerceIn(valueRange)
+    }
+    val fraction = ((displayedValue - valueRange.start) /
         (valueRange.endInclusive - valueRange.start)).coerceIn(0f, 1f)
     val targetRotation = MIN_ROTATION + ROTATION_SWEEP * fraction
     val animatedRotation by animateFloatAsState(
@@ -254,25 +274,51 @@ private fun MainFrameKnob(
             .semantics(mergeDescendants = true) {
                 contentDescription = label
                 stateDescription = valueDescription
-                progressBarRangeInfo = ProgressBarRangeInfo(value, valueRange, steps)
+                progressBarRangeInfo = ProgressBarRangeInfo(
+                    displayedValue,
+                    valueRange,
+                    detentCount - 2
+                )
                 setProgress { requestedValue ->
-                    currentOnValueChange(requestedValue.coerceIn(valueRange))
+                    val nextValue = requestedValue.snapToDetent(valueRange, detentCount)
+                    val nextDetentIndex = nextValue.detentIndex(valueRange, detentCount)
+                    if (nextDetentIndex != activeDetentIndex) {
+                        val useStrongHaptic = strongOffDetentHaptic &&
+                            (activeDetentIndex == 0 || nextDetentIndex == 0)
+                        activeDetentIndex = nextDetentIndex
+                        view.performRotaryHaptic(useStrongHaptic)
+                    }
+                    currentOnValueChange(nextValue)
                     currentOnValueChangeFinished()
                     true
                 }
             }
-            .pointerInput(valueRange) {
+            .pointerInput(valueRange, detentCount) {
                 detectDragGestures(
                     onDragStart = {
                         dragValue = currentValue
+                        activeDetentIndex = currentValue.detentIndex(valueRange, detentCount)
                     },
                     onDragEnd = { currentOnValueChangeFinished() },
                     onDragCancel = { currentOnValueChangeFinished() }
                 ) { change, dragAmount ->
-                    val valueDelta = -dragAmount.y / (touchDiameterPx * DRAG_DISTANCE_FACTOR) *
+                    val dragDistance = dragAmount.getDistance()
+                    val directionalDrag = (dragAmount.x - dragAmount.y)
+                        .coerceIn(-dragDistance, dragDistance)
+                    val valueDelta = directionalDrag /
+                        (touchDiameterPx * DRAG_DISTANCE_FACTOR) *
                         (valueRange.endInclusive - valueRange.start)
                     dragValue = (dragValue + valueDelta).coerceIn(valueRange)
-                    currentOnValueChange(dragValue)
+                    val nextDetentIndex = dragValue.detentIndex(valueRange, detentCount)
+                    if (nextDetentIndex != activeDetentIndex) {
+                        val useStrongHaptic = strongOffDetentHaptic &&
+                            (activeDetentIndex == 0 || nextDetentIndex == 0)
+                        activeDetentIndex = nextDetentIndex
+                        currentOnValueChange(
+                            nextDetentIndex.detentValue(valueRange, detentCount)
+                        )
+                        view.performRotaryHaptic(useStrongHaptic)
+                    }
                     change.consume()
                 }
             },
@@ -340,15 +386,14 @@ private fun PlaybackIndicator(
     isPlaying: Boolean,
     sourceCenter: Offset,
     imageScale: Float,
-    imageOffset: Offset,
-    onClick: () -> Unit
+    imageOffset: Offset
 ) {
     val density = LocalDensity.current
-    val touchDiameterPx = max(
-        PLAYBACK_TOUCH_DIAMETER * imageScale,
+    val indicatorDiameterPx = max(
+        PLAYBACK_INDICATOR_DIAMETER * imageScale,
         with(density) { MINIMUM_TOUCH_SIZE.toPx() }
     )
-    val touchDiameterDp = with(density) { touchDiameterPx.toDp() }
+    val indicatorDiameterDp = with(density) { indicatorDiameterPx.toDp() }
     val centerX = imageOffset.x + sourceCenter.x * imageScale
     val centerY = imageOffset.y + sourceCenter.y * imageScale
     val pulseTransition = rememberInfiniteTransition(label = "Playback light")
@@ -366,20 +411,18 @@ private fun PlaybackIndicator(
         modifier = Modifier
             .offset {
                 IntOffset(
-                    (centerX - touchDiameterPx / 2f).roundToInt(),
-                    (centerY - touchDiameterPx / 2f).roundToInt()
+                    (centerX - indicatorDiameterPx / 2f).roundToInt(),
+                    (centerY - indicatorDiameterPx / 2f).roundToInt()
                 )
             }
-            .size(touchDiameterDp)
-            .clip(CircleShape)
-            .clickable(onClick = onClick)
+            .size(indicatorDiameterDp)
             .semantics {
-                contentDescription = if (isPlaying) "Pause noise" else "Start noise"
+                contentDescription = "Playback status light"
                 stateDescription = if (isPlaying) "Playing" else "Paused"
             },
         contentAlignment = Alignment.Center
     ) {
-        Canvas(Modifier.size(touchDiameterDp)) {
+        Canvas(Modifier.size(indicatorDiameterDp)) {
             val center = Offset(size.width / 2f, size.height / 2f)
             val sourceUnit = imageScale
             if (isPlaying) {
@@ -452,6 +495,40 @@ private fun SettingsHotspot(
     )
 }
 
+private fun Float.detentIndex(
+    valueRange: ClosedFloatingPointRange<Float>,
+    detentCount: Int
+): Int {
+    val rangeLength = valueRange.endInclusive - valueRange.start
+    if (rangeLength <= 0f) return 0
+    val fraction = ((this - valueRange.start) / rangeLength).coerceIn(0f, 1f)
+    return (fraction * (detentCount - 1)).roundToInt()
+}
+
+private fun Int.detentValue(
+    valueRange: ClosedFloatingPointRange<Float>,
+    detentCount: Int
+): Float {
+    val index = coerceIn(0, detentCount - 1)
+    val fraction = index.toFloat() / (detentCount - 1)
+    return valueRange.start +
+        (valueRange.endInclusive - valueRange.start) * fraction
+}
+
+private fun Float.snapToDetent(
+    valueRange: ClosedFloatingPointRange<Float>,
+    detentCount: Int
+): Float = detentIndex(valueRange, detentCount).detentValue(valueRange, detentCount)
+
+private fun View.performRotaryHaptic(strong: Boolean) {
+    val feedbackType = if (strong) {
+        HapticFeedbackConstants.LONG_PRESS
+    } else {
+        HapticFeedbackConstants.CONTEXT_CLICK
+    }
+    performHapticFeedback(feedbackType)
+}
+
 private const val SOURCE_WIDTH = 1024f
 private const val SOURCE_HEIGHT = 1535f
 private const val SOURCE_VIEWPORT_WIDTH = 720f
@@ -464,10 +541,12 @@ private const val LANDSCAPE_MACHINE_WIDTH_FRACTION = 0.92f
 private const val LANDSCAPE_MACHINE_HEIGHT_FRACTION = 0.94f
 private const val MIN_ROTATION = -135f
 private const val ROTATION_SWEEP = 270f
-private const val PLAYBACK_TOUCH_DIAMETER = 80f
+private const val PLAYBACK_INDICATOR_DIAMETER = 80f
 private const val SETTINGS_TOUCH_DIAMETER = 75f
 private const val TIMER_READOUT_WIDTH = 112f
 private const val TIMER_READOUT_HEIGHT = 24f
 private const val TIMER_READOUT_TEXT_SIZE = 13f
 private const val DRAG_DISTANCE_FACTOR = 1.35f
+private const val VOLUME_DETENT_COUNT = 27
+private const val BAND_DETENT_COUNT = 19
 private val MINIMUM_TOUCH_SIZE = 48.dp

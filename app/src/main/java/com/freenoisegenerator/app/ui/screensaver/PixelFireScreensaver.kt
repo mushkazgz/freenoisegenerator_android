@@ -25,7 +25,9 @@ import kotlinx.coroutines.isActive
 import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.min
+import kotlin.math.pow
 import kotlin.math.roundToInt
+import kotlin.math.sin
 import kotlin.random.Random
 
 @Composable
@@ -65,7 +67,7 @@ internal fun PixelFireScreensaver(modifier: Modifier = Modifier) {
         val firePixelSize = floor(imageWidth / FIRE_SCALE_REFERENCE_WIDTH).coerceAtLeast(2f)
         val fireCenterX = imageLeft + imageWidth * 0.5f
         val fireBottomY = imageTop + imageHeight * FIRE_BASE_Y_FRACTION
-        drawFireGrid(fire, fireCenterX, fireBottomY, firePixelSize)
+        drawFireGrid(fire, fireCenterX, fireBottomY, firePixelSize, animationFrame)
         drawEmbers(fire, fireCenterX, fireBottomY, firePixelSize)
     }
 }
@@ -74,18 +76,52 @@ private fun DrawScope.drawFireGrid(
     fire: PixelFireSimulation,
     centerX: Float,
     bottomY: Float,
-    pixelSize: Float
+    pixelSize: Float,
+    animationFrame: Int
 ) {
     val left = centerX - fire.width * pixelSize / 2f
     val top = bottomY - fire.height * pixelSize
+    val visibleRows = fire.height - HIDDEN_SOURCE_ROWS
 
-    for (y in 0 until fire.height - HIDDEN_SOURCE_ROWS) {
+    for (y in 0 until visibleRows) {
+        val verticalFraction = y.toFloat() / (visibleRows - 1).coerceAtLeast(1)
+        val topFade = (verticalFraction / FIRE_TOP_FADE_FRACTION).coerceIn(0f, 1f)
+        val bottomFade = (
+            (1f - verticalFraction) / FIRE_BOTTOM_FADE_FRACTION
+            ).coerceIn(0f, 1f)
+        val halfWidth = fire.width *
+            (FIRE_TOP_HALF_WIDTH_FRACTION +
+                FIRE_WIDTH_GROWTH_FRACTION *
+                verticalFraction.pow(FIRE_WIDTH_GROWTH_POWER))
+        val centerDrift = sin(
+            y * FIRE_SHAPE_WAVE_FREQUENCY +
+                animationFrame * FIRE_SHAPE_MOTION_SPEED
+        ) * fire.width * (1f - verticalFraction) * FIRE_SHAPE_DRIFT_FRACTION
+
         for (x in 0 until fire.width) {
+            val distanceFromShapeCenter = abs(x - (fire.width / 2f + centerDrift))
+            val edgeDistance = 1f - distanceFromShapeCenter / halfWidth
+            if (edgeDistance <= 0f) continue
+
             val heat = fire.heatAt(x, y)
             val paletteIndex = heat * FIRE_PALETTE.lastIndex / MAX_HEAT
             if (paletteIndex <= 1) continue
             val heatAlpha = ((heat - MIN_VISIBLE_HEAT).toFloat() /
-                (MAX_HEAT - MIN_VISIBLE_HEAT)).coerceIn(0.18f, 1f)
+                (MAX_HEAT - MIN_VISIBLE_HEAT)).coerceIn(0f, 1f)
+            val surfaceVariation = (
+                FIRE_SURFACE_ALPHA_BASE +
+                    sin(
+                        x * FIRE_SURFACE_X_FREQUENCY +
+                            y * FIRE_SURFACE_Y_FREQUENCY +
+                            animationFrame * FIRE_SURFACE_MOTION_SPEED
+                    ) * FIRE_SURFACE_ALPHA_VARIATION
+                ).coerceIn(0f, 1f)
+            val shapeAlpha = (
+                edgeDistance / FIRE_EDGE_FADE_FRACTION
+                ).coerceIn(0f, 1f) *
+                topFade *
+                bottomFade *
+                surfaceVariation
             drawRect(
                 color = FIRE_PALETTE[paletteIndex],
                 topLeft = Offset(
@@ -93,7 +129,7 @@ private fun DrawScope.drawFireGrid(
                     y = floor(top + y * pixelSize)
                 ),
                 size = Size(pixelSize, pixelSize),
-                alpha = FIRE_OVERLAY_ALPHA * heatAlpha,
+                alpha = FIRE_OVERLAY_ALPHA * heatAlpha * shapeAlpha,
                 blendMode = BlendMode.Screen
             )
         }
@@ -170,7 +206,7 @@ private class PixelFireSimulation(
 
     private fun seedFire() {
         val center = width / 2f
-        val activeRadius = width * 0.34f
+        val activeRadius = width * 0.39f
         for (sourceRow in height - SOURCE_ROWS until height) {
             for (x in 0 until width) {
                 val distance = abs(x - center)
@@ -210,7 +246,9 @@ private class PixelFireSimulation(
         if (frame % 2 == 0 && random.nextFloat() < 0.72f) {
             val slot = emberLife.indexOfFirst { it <= 0 }
             if (slot >= 0) {
-                emberX[slot] = width / 2f + random.nextInt(-12, 13)
+                val emberRadius = (width * 0.3f).roundToInt()
+                emberX[slot] = width / 2f +
+                    random.nextInt(-emberRadius, emberRadius + 1)
                 emberY[slot] = height - random.nextInt(13, 23).toFloat()
                 emberDrift[slot] = random.nextFloat() * 0.46f - 0.23f
                 emberRise[slot] = random.nextFloat() * 0.75f + 0.65f
@@ -249,16 +287,30 @@ private val FIRE_PALETTE = arrayOf(
 private const val IMAGE_WIDTH_MULTIPLIER = 1.28f
 private const val MAX_IMAGE_HEIGHT_FRACTION = 0.86f
 private const val IMAGE_BOTTOM_FRACTION = 0.88f
-private const val FIRE_BASE_Y_FRACTION = 0.565f
+private const val FIRE_BASE_Y_FRACTION = 0.59f
 private const val FIRE_SCALE_REFERENCE_WIDTH = 120f
-private const val FIRE_WIDTH = 44
+private const val FIRE_WIDTH = 72
 private const val FIRE_HEIGHT = 54
 private const val SOURCE_ROWS = 3
 private const val HIDDEN_SOURCE_ROWS = 8
-private const val MIN_VISIBLE_HEAT = 32
+private const val MIN_VISIBLE_HEAT = 42
 private const val MAX_HEAT = 255
-private const val MAX_EMBERS = 18
+private const val MAX_EMBERS = 26
 private const val PREWARM_STEPS = FIRE_HEIGHT * 2
-private const val FIRE_OVERLAY_ALPHA = 0.70f
+private const val FIRE_OVERLAY_ALPHA = 0.56f
 private const val EMBER_OVERLAY_ALPHA = 0.86f
 private const val FRAME_DELAY_MILLIS = 72L
+private const val FIRE_TOP_HALF_WIDTH_FRACTION = 0.07f
+private const val FIRE_WIDTH_GROWTH_FRACTION = 0.30f
+private const val FIRE_WIDTH_GROWTH_POWER = 1.28f
+private const val FIRE_TOP_FADE_FRACTION = 0.18f
+private const val FIRE_BOTTOM_FADE_FRACTION = 0.16f
+private const val FIRE_EDGE_FADE_FRACTION = 0.32f
+private const val FIRE_SHAPE_DRIFT_FRACTION = 0.055f
+private const val FIRE_SHAPE_WAVE_FREQUENCY = 0.43f
+private const val FIRE_SHAPE_MOTION_SPEED = 0.17f
+private const val FIRE_SURFACE_ALPHA_BASE = 0.82f
+private const val FIRE_SURFACE_ALPHA_VARIATION = 0.18f
+private const val FIRE_SURFACE_X_FREQUENCY = 0.47f
+private const val FIRE_SURFACE_Y_FREQUENCY = 0.31f
+private const val FIRE_SURFACE_MOTION_SPEED = 0.23f
