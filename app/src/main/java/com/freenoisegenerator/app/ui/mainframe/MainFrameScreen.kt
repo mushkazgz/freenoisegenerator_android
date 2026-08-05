@@ -293,22 +293,27 @@ private fun MainFrameKnob(
                     true
                 }
             }
-            .pointerInput(valueRange, detentCount) {
+            .pointerInput(valueRange, detentCount, touchDiameterPx) {
+                val gestureTracker = RotaryGestureTracker(
+                    touchDiameterPx = touchDiameterPx,
+                    rotationSweepDegrees = ROTATION_SWEEP
+                )
                 detectDragGestures(
-                    onDragStart = {
+                    onDragStart = { position ->
                         dragValue = currentValue
                         activeDetentIndex = currentValue.detentIndex(valueRange, detentCount)
+                        gestureTracker.start(
+                            position = position,
+                            center = Offset(size.width / 2f, size.height / 2f),
+                            initialFraction = currentValue.fractionIn(valueRange)
+                        )
                     },
                     onDragEnd = { currentOnValueChangeFinished() },
                     onDragCancel = { currentOnValueChangeFinished() }
-                ) { change, dragAmount ->
-                    val dragDistance = dragAmount.getDistance()
-                    val directionalDrag = (dragAmount.x - dragAmount.y)
-                        .coerceIn(-dragDistance, dragDistance)
-                    val valueDelta = directionalDrag /
-                        (touchDiameterPx * DRAG_DISTANCE_FACTOR) *
-                        (valueRange.endInclusive - valueRange.start)
-                    dragValue = (dragValue + valueDelta).coerceIn(valueRange)
+                ) { change, _ ->
+                    val gestureFraction = gestureTracker.dragTo(change.position)
+                    dragValue = valueRange.start +
+                        (valueRange.endInclusive - valueRange.start) * gestureFraction
                     val nextDetentIndex = dragValue.detentIndex(valueRange, detentCount)
                     if (nextDetentIndex != activeDetentIndex) {
                         val useStrongHaptic = strongOffDetentHaptic &&
@@ -505,6 +510,14 @@ private fun Float.detentIndex(
     return (fraction * (detentCount - 1)).roundToInt()
 }
 
+private fun Float.fractionIn(
+    valueRange: ClosedFloatingPointRange<Float>
+): Float {
+    val rangeLength = valueRange.endInclusive - valueRange.start
+    if (rangeLength <= 0f) return 0f
+    return ((this - valueRange.start) / rangeLength).coerceIn(0f, 1f)
+}
+
 private fun Int.detentValue(
     valueRange: ClosedFloatingPointRange<Float>,
     detentCount: Int
@@ -546,7 +559,6 @@ private const val SETTINGS_TOUCH_DIAMETER = 75f
 private const val TIMER_READOUT_WIDTH = 112f
 private const val TIMER_READOUT_HEIGHT = 24f
 private const val TIMER_READOUT_TEXT_SIZE = 13f
-private const val DRAG_DISTANCE_FACTOR = 1.35f
 private const val VOLUME_DETENT_COUNT = 27
 private const val BAND_DETENT_COUNT = 19
 private val MINIMUM_TOUCH_SIZE = 48.dp

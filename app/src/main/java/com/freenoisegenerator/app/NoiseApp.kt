@@ -14,20 +14,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ElevatedButton
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -54,6 +43,7 @@ import androidx.core.view.WindowInsetsCompat
 import com.freenoisegenerator.app.service.NoiseService
 import com.freenoisegenerator.app.ui.mainframe.MainFrameScreen
 import com.freenoisegenerator.app.ui.screensaver.PixelFireScreensaver
+import com.freenoisegenerator.app.ui.settings.WoodSettingsDialog
 
 @Composable
 internal fun NoiseApp(resumeSignal: Int) {
@@ -301,7 +291,7 @@ internal fun NoiseApp(resumeSignal: Int) {
             InfoDialog(onDismiss = { showInfoDialog = false })
         }
         if (showSettingsDialog) {
-            SettingsDialog(
+            WoodSettingsDialog(
                 screensaverEnabled = screensaverEnabled,
                 onScreensaverChange = ::setScreensaverEnabled,
                 onBluetoothClick = {
@@ -336,83 +326,6 @@ private fun ScreensaverSystemBars(hidden: Boolean) {
         onDispose {
             if (hidden) controller?.show(WindowInsetsCompat.Type.systemBars())
         }
-    }
-}
-
-@Composable
-private fun SettingsDialog(
-    screensaverEnabled: Boolean,
-    onScreensaverChange: (Boolean) -> Unit,
-    onBluetoothClick: () -> Unit,
-    onInfoClick: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = AppColors.Panel,
-        titleContentColor = AppColors.TextPrimary,
-        textContentColor = AppColors.TextMuted,
-        confirmButton = { DialogActionButton(text = "Done", onClick = onDismiss) },
-        dismissButton = { DialogActionButton(text = "Info", onClick = onInfoClick) },
-        title = { Text(text = "Settings", fontWeight = FontWeight.SemiBold) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text(text = "Screensaver")
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SettingsChoiceButton(
-                        text = "On",
-                        selected = screensaverEnabled,
-                        onClick = { onScreensaverChange(true) }
-                    )
-                    SettingsChoiceButton(
-                        text = "Off",
-                        selected = !screensaverEnabled,
-                        onClick = { onScreensaverChange(false) }
-                    )
-                }
-                ElevatedButton(
-                    onClick = onBluetoothClick,
-                    colors = ButtonDefaults.elevatedButtonColors(
-                        containerColor = AppColors.ButtonActive,
-                        contentColor = AppColors.TextPrimary
-                    )
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Bluetooth,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(text = "Bluetooth")
-                }
-            }
-        }
-    )
-}
-
-@Composable
-private fun SettingsChoiceButton(text: String, selected: Boolean, onClick: () -> Unit) {
-    ElevatedButton(
-        onClick = onClick,
-        colors = ButtonDefaults.elevatedButtonColors(
-            containerColor = if (selected) AppColors.ButtonIdle else AppColors.ButtonActive,
-            contentColor = if (selected) AppColors.ButtonIdleText else AppColors.TextPrimary
-        )
-    ) {
-        Text(text = text)
-    }
-}
-
-@Composable
-private fun DialogActionButton(text: String, onClick: () -> Unit) {
-    ElevatedButton(
-        onClick = onClick,
-        colors = ButtonDefaults.elevatedButtonColors(
-            containerColor = AppColors.ButtonActive,
-            contentColor = AppColors.TextPrimary
-        )
-    ) {
-        Text(text = text)
     }
 }
 

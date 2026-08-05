@@ -33,6 +33,8 @@ The app is intentionally focused: one immersive playback console, persistent con
 - Timer dial rotates continuously toward `Off` as the countdown progresses.
 - Playback stops automatically when the countdown reaches zero.
 - Settings dialog with:
+  - Responsive wooden control-panel artwork matching the main console.
+  - Independent amber indicators for selected and pressed controls.
   - Screensaver on/off.
   - Bluetooth shortcut to Android Bluetooth settings.
   - About/info entry.
@@ -56,9 +58,13 @@ The output gain is boosted by 50% over the original default so the app has more 
 
 The main screen is rendered from one fixed 1024 x 1535 artwork and four transparent knob sprites. A shared source-coordinate transform positions the background, knobs, playback light and settings hotspot, so every interactive layer stays aligned when the available phone or tablet viewport changes.
 
-Drag a knob in any direction to adjust it: right or up increases the value, while left or down decreases it. Diagonal movement combines both axes without doubling the adjustment speed. Each control snaps to its visual scale: 27 positions for `Volume`, 19 positions for each tone band and 25 half-hour positions for `Timer`. Crossing a position produces a pronounced Android haptic click when system haptics are enabled. Moving `Volume` to zero pauses playback; moving it away from zero starts playback, with the strongest haptic response in both directions. A fresh app launch always resets `Volume` to zero. The audio engine receives `Volume`, `Bass` and `Low mids` changes immediately at every detent; band preferences are persisted when the gesture ends. Rotary movement uses a short visual interpolation without delaying the underlying audio value.
+Turn a knob naturally by tracing a clockwise or counter-clockwise arc around its face. Rotary controls use angular movement exclusively, so straight horizontal, vertical or radial swipes do not compete with the physical turning gesture. The recognizer handles the angle boundary without jumps and ignores unstable input near the center. Each control snaps to its visual scale: 27 positions for `Volume`, 19 positions for each tone band and 25 half-hour positions for `Timer`. Crossing a position produces a pronounced Android haptic click when system haptics are enabled. Moving `Volume` to zero pauses playback; moving it away from zero starts playback, with the strongest haptic response in both directions. A fresh app launch always resets `Volume` to zero. The audio engine receives `Volume`, `Bass` and `Low mids` changes immediately at every detent; band preferences are persisted when the gesture ends. Rotary movement uses a short visual interpolation without delaying the underlying audio value.
 
 The original static timer numbers are removed from the production artwork because the app timer runs from `Off` to 12 hours. The current duration or live countdown is drawn beneath the timer knob at runtime.
+
+## Settings Interface
+
+The settings screen is a responsive full-screen Compose dialog built from reusable wooden panel, button and indicator assets. Controls remain native touch targets with button and selected-state accessibility semantics; the artwork is decorative and does not contain baked-in labels or state lights. Selected screensaver state is shown by the amber light below `On` or `Off`, while command buttons briefly light and depress before their action runs. The same proportional layout is used in portrait and landscape without cropping.
 
 ## Bluetooth Behavior
 
@@ -101,8 +107,8 @@ If playback is paused when the task is removed, the service and notification clo
 - Java 17.
 - Minimum SDK 26.
 - Target SDK 35.
-- Version name 1.0.0.
-- Version code 2.
+- Version name 1.1.0.
+- Version code 3.
 
 ## Rebuild Mainframe Assets
 
@@ -115,6 +121,20 @@ powershell -ExecutionPolicy Bypass -File .\tools\extract-mainframe-assets.ps1 `
 ```
 
 The script copies the background, removes obsolete timer-number glyphs without damaging nearby dial marks, and exports circular transparent sprites for each knob.
+
+## Rebuild Settings Assets
+
+The checked-in settings artwork is ready to use. To rebuild it from replacement panel, button and indicator PNG files, run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\prepare-settings-assets.ps1 `
+    -Panel 'C:\path\to\settings-panel.png' `
+    -SmallButton 'C:\path\to\small-button.png' `
+    -WideButton 'C:\path\to\wide-button.png' `
+    -Indicator 'C:\path\to\indicator.png'
+```
+
+The processor removes generated checkerboard backgrounds, crops transparent margins and exports deterministic `drawable-nodpi` assets at the dimensions expected by the Compose layout. Labels and icons are rendered by the app so they stay sharp and accessible.
 
 ## Rebuild Brand Assets
 
