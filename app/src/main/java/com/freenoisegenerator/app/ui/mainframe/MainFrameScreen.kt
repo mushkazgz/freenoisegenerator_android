@@ -1,7 +1,5 @@
 package com.freenoisegenerator.app.ui.mainframe
 
-import android.view.HapticFeedbackConstants
-import android.view.View
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -58,6 +56,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.freenoisegenerator.app.R
+import com.freenoisegenerator.app.ui.performControlHaptic
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -286,7 +285,7 @@ private fun MainFrameKnob(
                         val useStrongHaptic = strongOffDetentHaptic &&
                             (activeDetentIndex == 0 || nextDetentIndex == 0)
                         activeDetentIndex = nextDetentIndex
-                        view.performRotaryHaptic(useStrongHaptic)
+                        view.performControlHaptic(emphasized = useStrongHaptic)
                     }
                     currentOnValueChange(nextValue)
                     currentOnValueChangeFinished()
@@ -322,7 +321,7 @@ private fun MainFrameKnob(
                         currentOnValueChange(
                             nextDetentIndex.detentValue(valueRange, detentCount)
                         )
-                        view.performRotaryHaptic(useStrongHaptic)
+                        view.performControlHaptic(emphasized = useStrongHaptic)
                     }
                     change.consume()
                 }
@@ -532,15 +531,6 @@ private fun Float.snapToDetent(
     valueRange: ClosedFloatingPointRange<Float>,
     detentCount: Int
 ): Float = detentIndex(valueRange, detentCount).detentValue(valueRange, detentCount)
-
-private fun View.performRotaryHaptic(strong: Boolean) {
-    val feedbackType = if (strong) {
-        HapticFeedbackConstants.LONG_PRESS
-    } else {
-        HapticFeedbackConstants.CONTEXT_CLICK
-    }
-    performHapticFeedback(feedbackType)
-}
 
 private const val SOURCE_WIDTH = 1024f
 private const val SOURCE_HEIGHT = 1535f

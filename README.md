@@ -14,12 +14,13 @@ The app is intentionally focused: one immersive playback console, persistent con
 - Responsive, edge-to-edge Android interface with portrait and landscape support.
 - Responsive analog-console artwork with warm wood, black metal and amber details.
 - Unified black, ivory, aged-gold, copper and amber brand palette across app and store icons.
+- Subtle 50% white version watermark sourced automatically from the Gradle release version.
 - Procedural deep brown noise generation with `AudioTrack`.
 - Background playback through a `ForegroundService`.
 - Persistent media notification with compact pause and stop actions.
 - Active playback continues when the app is minimized or removed from recents.
 - Animated rotary controls for `Volume`, `Bass`, `Low mids` and `Timer`.
-- Mechanical rotary detents with a pronounced system-respecting haptic click at every step.
+- Mechanical rotary detents with a strong system-respecting haptic pulse at every step and a double pulse when volume crosses the off position.
 - Large touch targets and adjustable accessibility semantics despite the compact artwork.
 - Amber playback light that reflects playback state and pulses while audio is active.
 - Persistent `Bass` and `Low mids` settings.
@@ -35,6 +36,7 @@ The app is intentionally focused: one immersive playback console, persistent con
 - Settings dialog with:
   - Responsive wooden control-panel artwork matching the main console.
   - Independent amber indicators for selected and pressed controls.
+  - Strong haptic feedback on every button, including the close gear.
   - Screensaver on/off.
   - Bluetooth shortcut to Android Bluetooth settings.
   - About/info entry.
@@ -64,7 +66,7 @@ The original static timer numbers are removed from the production artwork becaus
 
 ## Settings Interface
 
-The settings screen is a responsive full-screen Compose dialog built from reusable wooden panel, button and indicator assets. Controls remain native touch targets with button and selected-state accessibility semantics; the artwork is decorative and does not contain baked-in labels or state lights. Selected screensaver state is shown by the amber light below `On` or `Off`, while command buttons briefly light and depress before their action runs. The same proportional layout is used in portrait and landscape without cropping.
+The settings screen is a responsive full-screen Compose dialog built from reusable wooden panel, button and indicator assets. Controls remain native touch targets with button and selected-state accessibility semantics; the artwork is decorative and does not contain baked-in labels or state lights. Selected screensaver state is shown by the amber light below `On` or `Off`, while command buttons briefly light and depress before their action runs. The top-right gear is also a large accessible close control. The same proportional layout is used in portrait and landscape without cropping.
 
 ## Bluetooth Behavior
 

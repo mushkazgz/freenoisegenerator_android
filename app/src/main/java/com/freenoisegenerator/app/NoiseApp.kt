@@ -15,7 +15,11 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -28,6 +32,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -37,6 +42,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -279,6 +285,17 @@ internal fun NoiseApp(resumeSignal: Int) {
             modifier = Modifier.fillMaxSize()
         )
 
+        Text(
+            text = BuildConfig.VERSION_NAME,
+            color = Color.White.copy(alpha = VERSION_WATERMARK_ALPHA),
+            fontSize = VERSION_WATERMARK_TEXT_SIZE,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .padding(end = 12.dp, bottom = 8.dp)
+        )
+
         AnimatedVisibility(
             visible = isDimmed,
             enter = fadeIn(animationSpec = tween(durationMillis = 1_600)),
@@ -461,6 +478,8 @@ private const val MAX_TIMER_STEPS = 24
 private const val TIMER_STEP_MINUTES = 30
 private const val TIMER_STEP_MILLIS = TIMER_STEP_MINUTES * 60L * 1_000L
 private const val TIMER_APPLY_DELAY_MILLIS = 5_000L
+private const val VERSION_WATERMARK_ALPHA = 0.5f
+private val VERSION_WATERMARK_TEXT_SIZE = 11.sp
 private const val IDLE_DIM_DELAY_MILLIS = 10_000L
 private const val PAYPAL_DONATION_URL =
     "https://www.paypal.com/donate/?business=VDWKX7KYKZB9Q&no_recurring=1&currency_code=EUR"

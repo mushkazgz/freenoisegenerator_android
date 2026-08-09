@@ -1,6 +1,5 @@
 package com.freenoisegenerator.app.ui.settings
 
-import android.view.HapticFeedbackConstants
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -48,6 +47,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.freenoisegenerator.app.R
+import com.freenoisegenerator.app.ui.performControlHaptic
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -65,6 +65,14 @@ internal fun WoodSettingsDialog(
     ) {
         val outsideInteraction = remember { MutableInteractionSource() }
         val panelInteraction = remember { MutableInteractionSource() }
+        val closeInteraction = remember { MutableInteractionSource() }
+        val view = LocalView.current
+        val closePressed by closeInteraction.collectIsPressedAsState()
+        val closeScale by animateFloatAsState(
+            targetValue = if (closePressed) 0.9f else 1f,
+            animationSpec = tween(durationMillis = 90, easing = FastOutSlowInEasing),
+            label = "Settings close press"
+        )
 
         Box(
             modifier = Modifier
@@ -84,6 +92,10 @@ internal fun WoodSettingsDialog(
                     MAX_PANEL_WIDTH
                 )
                 val panelHeight = panelWidth / PANEL_ASPECT_RATIO
+                val closeIconSize = panelWidth * 0.075f
+                val closeTouchSize = maxOf(48.dp, panelWidth * 0.12f)
+                val closeCenterX = panelWidth * 0.8275f
+                val closeCenterY = panelHeight * 0.105f + closeIconSize / 2f
 
                 Box(
                     modifier = Modifier
@@ -115,17 +127,36 @@ internal fun WoodSettingsDialog(
                             y = panelHeight * 0.105f
                         )
                     )
-                    Icon(
-                        imageVector = Icons.Default.Settings,
-                        contentDescription = null,
-                        tint = LABEL_GOLD,
+                    Box(
                         modifier = Modifier
                             .offset(
-                                x = panelWidth * 0.79f,
-                                y = panelHeight * 0.105f
+                                x = closeCenterX - closeTouchSize / 2f,
+                                y = closeCenterY - closeTouchSize / 2f
                             )
-                            .size(panelWidth * 0.075f)
-                    )
+                            .size(closeTouchSize)
+                            .clickable(
+                                interactionSource = closeInteraction,
+                                indication = null,
+                                role = Role.Button,
+                                onClick = {
+                                    view.performControlHaptic()
+                                    onDismiss()
+                                }
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Close settings",
+                            tint = LABEL_GOLD,
+                            modifier = Modifier
+                                .size(closeIconSize)
+                                .graphicsLayer {
+                                    scaleX = closeScale
+                                    scaleY = closeScale
+                                }
+                        )
+                    }
                     Text(
                         text = "Screensaver",
                         color = LABEL_GOLD.copy(alpha = 0.92f),
@@ -263,7 +294,7 @@ private fun WoodButton(
                     role = Role.Button,
                     onClick = {
                         activated = true
-                        view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                        view.performControlHaptic()
                         scope.launch {
                             delay(ACTION_FLASH_MILLIS)
                             onClick()
@@ -284,15 +315,18 @@ private fun WoodButton(
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize()
             )
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.offset(y = height * BUTTON_LABEL_Y_OFFSET)
+            ) {
                 if (icon != null) {
                     Icon(
                         imageVector = icon,
                         contentDescription = null,
                         tint = BUTTON_TEXT,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(BUTTON_ICON_SIZE)
                     )
-                    Spacer(Modifier.width(7.dp))
+                    Spacer(Modifier.width(BUTTON_ICON_SPACING))
                 }
                 Text(
                     text = label,
@@ -300,7 +334,7 @@ private fun WoodButton(
                     style = TextStyle(
                         fontFamily = FontFamily.Serif,
                         fontWeight = FontWeight.Medium,
-                        fontSize = 16.sp,
+                        fontSize = BUTTON_TEXT_SIZE,
                         shadow = TEXT_SHADOW
                     )
                 )
@@ -317,4 +351,8 @@ private const val PANEL_ASPECT_RATIO = 768f / 755f
 private const val SMALL_BUTTON_WIDTH = 0.28f
 private const val WIDE_BUTTON_WIDTH = 0.60f
 private const val BUTTON_HEIGHT = 0.115f
+private const val BUTTON_LABEL_Y_OFFSET = -0.105f
 private const val ACTION_FLASH_MILLIS = 110L
+private val BUTTON_TEXT_SIZE = 13.sp
+private val BUTTON_ICON_SIZE = 15.dp
+private val BUTTON_ICON_SPACING = 6.dp
